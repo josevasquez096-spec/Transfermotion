@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transfer Motion</title>
+    <meta name="description" content="Transfiere el movimiento de un video o tu cámara a cualquier personaje, con IA en tu navegador." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">TM</span>
+        <div>
+          <h1>Transfer Motion</h1>
+          <p>Transfiere el movimiento de un video a cualquier personaje · IA en tu navegador</p>
+        </div>
+      </div>
+      <div id="status" class="status" role="status">Listo</div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2><span class="step">1</span> Movimiento</h2>
+          <div class="btns">
+            <label class="btn">Subir video<input id="videoInput" type="file" accept="video/*" hidden /></label>
+            <button id="webcamBtn" class="btn">Cámara</button>
+            <button id="demoMotionBtn" class="btn ghost">Demo</button>
+          </div>
+        </div>
+        <div class="stage"><canvas id="srcCanvas"></canvas></div>
+        <p class="hint">Un video con una persona de cuerpo completo funciona mejor.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2><span class="step">2</span> Personaje</h2>
+          <div class="btns">
+            <label class="btn">Subir imagen<input id="imageInput" type="file" accept="image/*" hidden /></label>
+            <button id="demoCharBtn" class="btn ghost">Demo</button>
+          </div>
+        </div>
+        <div class="stage checker"><canvas id="charCanvas"></canvas></div>
+        <div class="row">
+          <label class="check"><input id="cutout" type="checkbox" checked /> Recortar fondo con IA</label>
+        </div>
+        <p class="hint">Arrastra los puntos del esqueleto para ajustarlo si la detección no es perfecta.</p>
+      </section>
+
+      <section class="panel wide">
+        <div class="panel-head">
+          <h2><span class="step">3</span> Resultado</h2>
+          <div class="btns">
+            <button id="playBtn" class="btn">⏸ Pausar</button>
+            <button id="recBtn" class="btn rec">● Grabar</button>
+          </div>
+        </div>
+        <div id="resultStage" class="stage result">
+          <canvas id="glCanvas"></canvas>
+          <canvas id="overlayCanvas"></canvas>
+        </div>
+        <div class="controls">
+          <label class="check"><input id="showSkel" type="checkbox" /> Mostrar esqueleto</label>
+          <label class="check"><input id="showWire" type="checkbox" /> Ver malla</label>
+          <label class="check"><input id="followRoot" type="checkbox" checked /> Seguir desplazamiento</label>
+          <label class="check"><input id="transparent" type="checkbox" /> Fondo transparente</label>
+          <label class="field">Fondo <input id="bgColor" type="color" value="#1b1e27" /></label>
+          <label class="field">Suavizado <input id="smoothing" type="range" min="0" max="0.95" step="0.05" value="0.5" /></label>
+          <button id="recalBtn" class="btn ghost small">Recalibrar posición</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      Todo se procesa localmente en tu navegador con MediaPipe Pose. Tus videos e imágenes no se suben a ningún servidor.
+    </footer>
+
+    <video id="video" playsinline muted loop hidden></video>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "transfer-motion",
+  "version": "0.1.0",
+  "description": "Transfer Motion: transfiere el movimiento de un video a la imagen de un personaje con IA, en el navegador.",
+  "scripts": {
+    "predev": "node scripts/copy-wasm.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-wasm.mjs",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/josevasquez096-spec/Transfermotion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/josevasquez096-spec/Transfermotion/issues"
+  },
+  "homepage": "https://github.com/josevasquez096-spec/Transfermotion#readme",
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  },
+  "private": true,
+  "type": "module"
+}
