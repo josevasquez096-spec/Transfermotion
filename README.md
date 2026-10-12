@@ -22,11 +22,13 @@ Necesita un navegador moderno con WebGL (Chrome, Edge, Firefox o Safari reciente
 
 - **Detección de pose**: [MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) obtiene 33 puntos del cuerpo en cada fotograma del video y en la imagen del personaje, además de una máscara para recortar el fondo.
 - **Esqueleto y retargeting** (`src/skeleton.js`): los puntos se reducen a un esqueleto de 19 articulaciones. Se copia la dirección de cada hueso del video, pero con las longitudes de hueso del personaje, para conservar sus proporciones. Hombros y caderas siguen la columna, de modo que el personaje no se deforma cuando la persona del video gira de lado.
-- **Deformación** (`src/mesh.js`, `src/renderer.js`): sobre la imagen se crea una malla con pesos de skinning (cada vértice sigue a los huesos más cercanos) y la GPU la deforma con WebGL en cada fotograma.
+- **Capas** (`src/mesh.js`): el personaje se recorta en capas independientes (cuerpo, brazos y piernas) como un muñeco de papel. Así un brazo pegado al cuerpo puede separarse sin estirar la piel del torso, y el hueco que deja se rellena con los colores de alrededor.
+- **Deformación** (`src/mesh.js`, `src/renderer.js`): cada capa tiene una malla con pesos de skinning (cada vértice sigue a los huesos más cercanos) y la GPU la deforma con WebGL en cada fotograma.
 - **Ajuste manual**: si la detección no es perfecta, arrastra los puntos del esqueleto en el panel del personaje.
 
 ## Consejos
 
-- Usa imágenes del personaje de frente, de cuerpo completo y con los brazos algo separados del cuerpo.
+- Usa imágenes del personaje de frente, de cuerpo completo y con los brazos algo separados del cuerpo (lo que queda tapado por un brazo se rellena, pero se inventa).
+- En el video, la persona debe verse entera, con buena luz y sin ropa que tape las piernas (vestidos largos, abrigos).
 - Los PNG con fondo transparente dan los mejores resultados.
 - Si el personaje se desplaza demasiado, desactiva "Seguir desplazamiento" o pulsa "Recalibrar posición".

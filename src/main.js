@@ -1,5 +1,5 @@
 import { J, VIS, fromLandmarks, restInfo, retarget, boneTransforms, drawSkeleton, dist } from './skeleton.js';
-import { buildMesh } from './mesh.js';
+import { buildRig } from './mesh.js';
 import { Renderer } from './renderer.js';
 import { demoPose, demoCharacter, DEMO_SIZE } from './demo.js';
 import { getVideoLandmarker, getImageLandmarker } from './pose.js';
@@ -102,16 +102,19 @@ function rebuildTexture() {
   }
   t.composite = c;
   t.imageData = img;
-  renderer.setTexture(c);
   rebuildMesh();
 }
 
 function rebuildMesh() {
   const t = state.target;
   t.info = restInfo(t.rest);
-  renderer.setMesh(buildMesh(t.imageData, t.rest));
-  t.pad = Math.round(0.22 * Math.max(t.w, t.h));
-  const W = t.w + 2 * t.pad, H = t.h + 2 * t.pad;
+  const rig = buildRig(t.imageData, t.rest);
+  renderer.setTexture(rig.atlas);
+  renderer.setMesh(rig.mesh);
+  // Margen para que brazos y piernas extendidos quepan, incluso en imágenes estrechas.
+  t.padY = Math.round(0.22 * Math.max(t.w, t.h));
+  t.padX = Math.max(t.padY, Math.round(0.6 * t.h - t.w / 2));
+  const W = t.w + 2 * t.padX, H = t.h + 2 * t.padY;
   renderer.resize(W, H);
   el.overlay.width = W;
   el.overlay.height = H;
@@ -394,18 +397,24 @@ function drawResult() {
     let root = { ...t.rest[J.pelvis] };
     if (el.followRoot.checked && state.srcRef && src[J.pelvis].v >= VIS) {
       const k = t.info.torso / state.srcRef.torso;
-      root = { x: root.x + (src[J.pelvis].x - state.srcRef.x) * k, y: root.y + (src[J.pelvis].y - state.srcRef.y) * k, v: 1 };
+      // Limitado para que el personaje no se salga del cuadro.
+      const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+      root = {
+        x: root.x + clamp((src[J.pelvis].x - state.srcRef.x) * k, t.padX * 0.7),
+        y: root.y + clamp((src[J.pelvis].y - state.srcRef.y) * k, t.padY * 0.5),
+        v: 1,
+      };
     }
     posed = retarget(t.rest, t.info, src, root);
   }
   state.posed = posed;
   boneTransforms(t.rest, posed, bones);
   const bg = el.transparent.checked ? null : hexToRgb(el.bgColor.value);
-  renderer.render(bones, [t.pad, t.pad], bg, el.showWire.checked);
+  renderer.render(bones, [t.padX, t.padY], bg, el.showWire.checked);
 
   overlayCtx.clearRect(0, 0, el.overlay.width, el.overlay.height);
   if (el.showSkel.checked) {
-    drawSkeleton(overlayCtx, posed, { ox: t.pad, oy: t.pad, radius: Math.max(4, el.overlay.width / 180) });
+    drawSkeleton(overlayCtx, posed, { ox: t.padX, oy: t.padY, radius: Math.max(4, el.overlay.width / 180) });
   }
 }
 
