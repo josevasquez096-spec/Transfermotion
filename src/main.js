@@ -1,8 +1,11 @@
-import { J, VIS, fromLandmarks, restInfo, retarget, boneTransforms, drawSkeleton, dist } from './skeleton.js';
+import { J, N, VIS, fromLandmarks, restInfo, retarget, boneTransforms, drawSkeleton, dist } from './skeleton.js';
 import { buildRig } from './mesh.js';
 import { Renderer } from './renderer.js';
 import { demoPose, demoCharacter, DEMO_SIZE } from './demo.js';
-import { getVideoLandmarker, getImageLandmarker } from './pose.js';
+import { getVideoLandmarker, getImageLandmarker, getFaceVideoLandmarker, getFaceImageLandmarker } from './pose.js';
+import { buildFaceRig, FaceDriver } from './face.js';
+import { OneEuro, CutDetector } from './filters.js';
+import { FramingCamera, fitView } from './camera.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -24,6 +27,8 @@ const el = {
   showSkel: $('showSkel'),
   showWire: $('showWire'),
   followRoot: $('followRoot'),
+  framing: $('framing'),
+  animateFace: $('animateFace'),
   transparent: $('transparent'),
   bgColor: $('bgColor'),
   smoothing: $('smoothing'),
@@ -49,6 +54,21 @@ el.video.playsInline = true;
 const DEMO = demoCharacter();
 const bones = new Float32Array(19 * 4);
 
+// Fotograma actual de la fuente, reducido y (en la cámara) reflejado como un espejo.
+// Todo se calcula sobre él: pose, cara, cortes de plano y textura de la boca.
+const MAX_SRC = 720;
+const frameCanvas = document.createElement('canvas');
+const frameCtx = frameCanvas.getContext('2d');
+
+// Puntos de la cara usados para encuadrar la cámara (ojos, nariz, mentón, frente, mejillas, boca).
+const FACE_FRAMING = [33, 263, 1, 152, 10, 234, 454, 61, 291];
+// Puntos de la cara que se dibujan sobre el video fuente.
+const FACE_DOTS = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152,
+  148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 33, 160, 158, 133, 153, 144, 362,
+  385, 387, 263, 373, 380, 61, 40, 37, 0, 267, 270, 291, 321, 314, 17, 84, 91, 13, 14, 1, 468, 473];
+const LOST_LIMIT = 6;
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
 const state = {
   source: 'demo', // 'demo' | 'video' | 'webcam'
   mirror: false,
@@ -66,7 +86,17 @@ const state = {
   recorder: null,
   drag: -1,
   needsTap: false,
+  poseLost: 0,
+  faceLandmarker: null,
+  face: null, // { lm: [{x,y,z}] en px de la fuente, blend, lost }
+  jointFilter: null,
+  faceFilter: null,
+  cuts: new CutDetector(),
+  camera: new FramingCamera(),
+  snapCamera: true,
+  view: { scale: 1, ox: 0, oy: 0 },
 };
+resetFilters();
 
 function setStatus(text, kind = '') {
   el.status.textContent = text;
@@ -77,10 +107,35 @@ function setStatus(text, kind = '') {
 
 const cloneJoints = (js) => js.map((p) => ({ x: p.x, y: p.y, v: 1 }));
 
-function setTarget(base, rest, mask) {
-  state.target = { base, rest: cloneJoints(rest), mask, w: base.width, h: base.height };
+function setTarget(base, rest, mask, faceLm = null) {
+  state.target = { base, rest: cloneJoints(rest), mask, faceLm, w: base.width, h: base.height };
   state.srcRef = null;
   rebuildTexture();
+  setupFace();
+}
+
+// Malla de la cara del personaje (si se detectó): ojos, cejas, boca, y un anillo para pelo y orejas.
+function setupFace() {
+  const t = state.target;
+  t.face = null;
+  if (!t.faceLm) return;
+  const rig = buildFaceRig(t.faceLm, t.w, t.h);
+  // El anillo exterior no debe salirse de la imagen (repetiría los píxeles del borde).
+  for (let i = 478; i < rig.n; i++) {
+    rig.rest[i * 2] = Math.min(t.w, Math.max(0, rig.rest[i * 2]));
+    rig.rest[i * 2 + 1] = Math.min(t.h, Math.max(0, rig.rest[i * 2 + 1]));
+    rig.uv[i * 2] = rig.rest[i * 2] / t.w;
+    rig.uv[i * 2 + 1] = rig.rest[i * 2 + 1] / t.h;
+  }
+  renderer.setFaceMesh({ uv: rig.uv, indices: rig.indices });
+  t.face = {
+    rig,
+    driver: new FaceDriver(rig),
+    targets: new Float32Array(rig.n * 2),
+    pos: new Float32Array(rig.n * 2),
+    mouthPos: new Float32Array(rig.innerLip.length * 6),
+    mouthUv: new Float32Array(rig.innerLip.length * 6),
+  };
 }
 
 function rebuildTexture() {
@@ -102,6 +157,7 @@ function rebuildTexture() {
   }
   t.composite = c;
   t.imageData = img;
+  renderer.setFaceTexture(c);
   rebuildMesh();
 }
 
@@ -114,13 +170,40 @@ function rebuildMesh() {
   // Margen para que brazos y piernas extendidos quepan, incluso en imágenes estrechas.
   t.padY = Math.round(0.22 * Math.max(t.w, t.h));
   t.padX = Math.max(t.padY, Math.round(0.6 * t.h - t.w / 2));
-  const W = t.w + 2 * t.padX, H = t.h + 2 * t.padY;
-  renderer.resize(W, H);
-  el.overlay.width = W;
-  el.overlay.height = H;
+  layout();
   el.charCanvas.width = t.w;
   el.charCanvas.height = t.h;
   drawCharacter();
+}
+
+// "Como el video": el resultado copia el encuadre de la fuente (primer plano, plano medio...).
+const autoFraming = () => el.framing.value === 'auto' && state.source !== 'demo';
+
+function layout() {
+  const t = state.target;
+  if (!t) return;
+  let W, H;
+  if (autoFraming()) {
+    const k = 960 / Math.max(state.srcSize.w, state.srcSize.h);
+    W = Math.round(state.srcSize.w * k);
+    H = Math.round(state.srcSize.h * k);
+  } else {
+    W = t.w + 2 * t.padX;
+    H = t.h + 2 * t.padY;
+  }
+  renderer.resize(W, H);
+  el.overlay.width = W;
+  el.overlay.height = H;
+  state.view = fullView();
+  state.camera.reset();
+  state.snapCamera = true;
+}
+
+// Vista con el personaje completo (y su margen) dentro del lienzo.
+function fullView() {
+  const t = state.target;
+  const rect = { x: -t.padX, y: -t.padY, w: t.w + 2 * t.padX, h: t.h + 2 * t.padY };
+  return fitView(rect, el.glCanvas.width, el.glCanvas.height);
 }
 
 const charScale = () => state.target.w / (el.charCanvas.getBoundingClientRect().width || state.target.w);
@@ -162,7 +245,7 @@ async function loadCharacter(file) {
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
-    const s = Math.min(1, 900 / Math.max(img.naturalWidth, img.naturalHeight));
+    const s = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
     const base = document.createElement('canvas');
     base.width = Math.round(img.naturalWidth * s);
     base.height = Math.round(img.naturalHeight * s);
@@ -177,12 +260,17 @@ async function loadCharacter(file) {
       mask = resampleMask(m.getAsFloat32Array(), m.width, m.height, base.width, base.height);
       m.close();
     }
-    if (res.landmarks?.[0]) {
-      setTarget(base, fromLandmarks(res.landmarks[0], base.width, base.height), mask);
-      setStatus('Personaje listo ✓ — ajusta los puntos si hace falta');
+    const joints = res.landmarks?.[0] ? fromLandmarks(res.landmarks[0], base.width, base.height) : null;
+    setStatus('Buscando la cara del personaje…', 'busy');
+    const faceLm = await detectCharacterFace(base, joints);
+    if (joints) {
+      setTarget(base, joints, mask, faceLm);
+      setStatus(faceLm
+        ? 'Personaje listo ✓ — cuerpo y cara detectados'
+        : 'Personaje listo ✓ — no se encontró la cara, solo se animará el cuerpo');
     } else {
-      setTarget(base, templateRest(base.width, base.height), null);
-      setStatus('No se detectó una persona: coloca los puntos del esqueleto a mano', 'error');
+      setTarget(base, templateRest(base.width, base.height), null, faceLm);
+      setStatus('No se detectó el cuerpo: coloca los puntos del esqueleto a mano', 'error');
     }
   } catch (err) {
     console.error(err);
@@ -190,6 +278,25 @@ async function loadCharacter(file) {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// Busca la malla facial del personaje. Si la persona sale de cuerpo entero la cara es pequeña,
+// así que primero se prueba con un recorte ampliado alrededor de la cabeza.
+async function detectCharacterFace(base, joints) {
+  const landmarker = await getFaceImageLandmarker();
+  const toPx = (lm, x0, y0, sw, sh) => lm.map((p) => ({ x: x0 + p.x * sw, y: y0 + p.y * sh, z: p.z * sw }));
+  if (joints) {
+    const sw = dist(joints[J.lsh], joints[J.rsh]);
+    const size = Math.max(1.7 * sw, 0.9 * dist(joints[J.chest], joints[J.head]), 64);
+    const cx = joints[J.head].x, cy = joints[J.head].y - size * 0.1;
+    const crop = document.createElement('canvas');
+    crop.width = crop.height = 512;
+    crop.getContext('2d').drawImage(base, cx - size / 2, cy - size / 2, size, size, 0, 0, 512, 512);
+    const r = landmarker.detect(crop);
+    if (r.faceLandmarks?.[0]) return toPx(r.faceLandmarks[0], cx - size / 2, cy - size / 2, size, size);
+  }
+  const r = landmarker.detect(base);
+  return r.faceLandmarks?.[0] ? toPx(r.faceLandmarks[0], 0, 0, base.width, base.height) : null;
 }
 
 // Edición manual del esqueleto del personaje arrastrando sus puntos.
@@ -240,10 +347,39 @@ function stopStream() {
 function resetSource(type) {
   state.source = type;
   state.src = null;
-  state.srcRef = null;
+  state.face = null;
   state.lastVideoTime = -1;
+  onCut();
   el.webcamBtn.classList.toggle('active', type === 'webcam');
   el.demoMotionBtn.classList.toggle('active', type === 'demo');
+}
+
+// Fija el tamaño del fotograma de trabajo (máx. MAX_SRC px de lado).
+function setSourceSize(w, h) {
+  const k = Math.min(1, MAX_SRC / Math.max(w, h));
+  state.srcSize = { w: Math.round(w * k), h: Math.round(h * k) };
+  frameCanvas.width = state.srcSize.w;
+  frameCanvas.height = state.srcSize.h;
+  resetFilters();
+  layout();
+}
+
+function resetFilters() {
+  const s = parseFloat(el.smoothing.value);
+  const scale = state.srcSize.h / 720;
+  state.jointFilter = new OneEuro({ ...OneEuro.fromSmoothing(s, scale), dims: 2 });
+  // La cara necesita reaccionar rápido (un parpadeo dura ~0,1 s).
+  state.faceFilter = new OneEuro({ ...OneEuro.fromSmoothing(s * 0.5, scale), dims: 2 });
+}
+
+// Cambio de plano (o el video volvió a empezar): nada del plano anterior sirve.
+function onCut() {
+  state.jointFilter?.reset();
+  state.faceFilter?.reset();
+  state.cuts?.reset();
+  state.srcRef = null;
+  state.snapCamera = true;
+  state.target?.face?.driver.reset();
 }
 
 // iOS (sobre todo en modo de bajo consumo) puede bloquear play() fuera de un toque.
@@ -266,14 +402,14 @@ function startDemo() {
   el.video.pause();
   resetSource('demo');
   state.mirror = false;
-  state.srcSize = { ...DEMO_SIZE };
+  setSourceSize(DEMO_SIZE.w, DEMO_SIZE.h);
   setStatus('Movimiento de demostración');
 }
 
 async function ensureVideoLandmarker() {
-  if (!state.landmarker) {
-    setStatus('Cargando el modelo de IA de pose…', 'busy');
-    state.landmarker = await getVideoLandmarker();
+  if (!state.landmarker || !state.faceLandmarker) {
+    setStatus('Cargando los modelos de IA (cuerpo y cara)…', 'busy');
+    [state.landmarker, state.faceLandmarker] = await Promise.all([getVideoLandmarker(), getFaceVideoLandmarker()]);
   }
 }
 
@@ -294,7 +430,7 @@ async function startVideo(file) {
     await waitForMetadata(el.video);
     resetSource('video');
     state.mirror = false;
-    state.srcSize = { w: el.video.videoWidth, h: el.video.videoHeight };
+    setSourceSize(el.video.videoWidth, el.video.videoHeight);
     if (state.playing && !(await playVideo())) return;
     setStatus('Video cargado ✓ — transfiriendo movimiento');
   } catch (err) {
@@ -320,7 +456,7 @@ async function startWebcam() {
     await waitForMetadata(el.video);
     resetSource('webcam');
     state.mirror = true;
-    state.srcSize = { w: el.video.videoWidth, h: el.video.videoHeight };
+    setSourceSize(el.video.videoWidth, el.video.videoHeight);
     if (!(await playVideo())) return;
     setStatus('Cámara activa ✓ — ¡muévete!');
   } catch (err) {
@@ -329,30 +465,62 @@ async function startWebcam() {
   }
 }
 
-function detectFrame(now) {
+// Copia el fotograma nuevo del video al lienzo de trabajo. Devuelve false si no hay fotograma nuevo.
+function grabFrame() {
   const v = el.video;
-  if (!state.landmarker || v.readyState < 2 || v.currentTime === state.lastVideoTime) return null;
+  if (v.readyState < 2 || v.currentTime === state.lastVideoTime) return false;
+  // El video volvió a empezar (bucle o salto): se trata como un cambio de plano.
+  if (v.currentTime < state.lastVideoTime) onCut();
   state.lastVideoTime = v.currentTime;
-  const res = state.landmarker.detectForVideo(v, now);
-  const lm = res.landmarks?.[0];
-  return lm ? fromLandmarks(lm, state.srcSize.w, state.srcSize.h, state.mirror) : null;
+  const { w, h } = state.srcSize;
+  frameCtx.save();
+  if (state.mirror) {
+    frameCtx.translate(w, 0);
+    frameCtx.scale(-1, 1);
+  }
+  frameCtx.drawImage(v, 0, 0, w, h);
+  frameCtx.restore();
+  return true;
 }
 
-function smoothInto(raw) {
-  const a = Math.max(0.05, 1 - parseFloat(el.smoothing.value));
-  if (!state.src) {
-    state.src = raw.map((p) => ({ ...p }));
+const jointVec = new Float32Array(N * 2);
+
+function detectFrame(now) {
+  const { w, h } = state.srcSize;
+  const t = now / 1000;
+  if (state.cuts.check(frameCanvas, t)) onCut();
+
+  // Cuerpo
+  const res = state.landmarker.detectForVideo(frameCanvas, now);
+  const lm = res.landmarks?.[0];
+  if (lm) {
+    const raw = fromLandmarks(lm, w, h);
+    raw.forEach((p, i) => { jointVec[i * 2] = p.x; jointVec[i * 2 + 1] = p.y; });
+    const f = state.jointFilter.filter(jointVec, t);
+    state.src = raw.map((p, i) => ({ x: f[i * 2], y: f[i * 2 + 1], v: p.v }));
+    state.poseLost = 0;
+  } else if (state.src && ++state.poseLost > LOST_LIMIT) {
+    state.src.forEach((p) => { p.v = 0; });
+  }
+
+  // Cara (solo si el personaje tiene cara que animar)
+  if (!state.target?.face || !el.animateFace.checked) return;
+  const fr = state.faceLandmarker.detectForVideo(frameCanvas, now);
+  const flm = fr.faceLandmarks?.[0];
+  if (!flm) {
+    if (state.face) state.face.lost++;
     return;
   }
-  raw.forEach((r, i) => {
-    const s = state.src[i];
-    if (r.v >= VIS) {
-      const k = s.v >= VIS ? a : 1;
-      s.x += (r.x - s.x) * k;
-      s.y += (r.y - s.y) * k;
-    }
-    s.v = r.v;
-  });
+  state.face ??= { vec: new Float32Array(flm.length * 2), lm: flm.map(() => ({ x: 0, y: 0, z: 0 })), lost: 0 };
+  const F = state.face;
+  flm.forEach((p, i) => { F.vec[i * 2] = p.x * w; F.vec[i * 2 + 1] = p.y * h; });
+  const f = state.faceFilter.filter(F.vec, t);
+  flm.forEach((p, i) => { F.lm[i].x = f[i * 2]; F.lm[i].y = f[i * 2 + 1]; F.lm[i].z = p.z * w; });
+  const cats = fr.faceBlendshapes?.[0]?.categories;
+  F.blend = cats ? Object.fromEntries(cats.map((c) => [c.categoryName, c.score])) : null;
+  F.lost = 0;
+  state.target.face.driver.update(F.lm, F.blend);
+  renderer.updateVideoTexture(frameCanvas);
 }
 
 function drawSource() {
@@ -368,15 +536,19 @@ function drawSource() {
     for (let x = 0; x < w; x += 40) { srcCtx.beginPath(); srcCtx.moveTo(x, 0); srcCtx.lineTo(x, h); srcCtx.stroke(); }
     for (let y = 0; y < h; y += 40) { srcCtx.beginPath(); srcCtx.moveTo(0, y); srcCtx.lineTo(w, y); srcCtx.stroke(); }
   } else {
-    srcCtx.save();
-    if (state.mirror) {
-      srcCtx.translate(w, 0);
-      srcCtx.scale(-1, 1);
-    }
-    srcCtx.drawImage(el.video, 0, 0, w, h);
-    srcCtx.restore();
+    srcCtx.drawImage(frameCanvas, 0, 0);
   }
-  if (state.src) drawSkeleton(srcCtx, state.src, { radius: Math.max(4, w / 160) });
+  if (state.src) drawSkeleton(srcCtx, state.src, { radius: Math.max(3, w / 180) });
+  if (faceActive()) {
+    srcCtx.fillStyle = '#7cf3c6';
+    const r = Math.max(1.5, w / 400);
+    for (const i of FACE_DOTS) {
+      const p = state.face.lm[i];
+      srcCtx.beginPath();
+      srcCtx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      srcCtx.fill();
+    }
+  }
 }
 
 // ---------- Resultado ----------
@@ -386,16 +558,24 @@ function hexToRgb(hex) {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
 }
 
-function drawResult() {
+const faceActive = () =>
+  el.animateFace.checked && state.source !== 'demo' && state.target?.face && state.face && state.face.lost < LOST_LIMIT;
+
+// Articulaciones "no visibles" para cuando la fuente no tiene cuerpo (p. ej. solo la cara).
+const NO_BODY = Array.from({ length: N }, () => ({ x: 0, y: 0, v: 0 }));
+
+function drawResult(dt) {
   const t = state.target;
+  const src = state.src ?? (state.source !== 'demo' ? NO_BODY : null);
+  const face = t.face;
+  const faceOn = faceActive();
   let posed = t.rest;
-  const src = state.src;
   if (src) {
     if (!state.srcRef && src[J.pelvis].v >= VIS && src[J.chest].v >= VIS) {
       state.srcRef = { x: src[J.pelvis].x, y: src[J.pelvis].y, torso: dist(src[J.pelvis], src[J.chest]) || 1 };
     }
     let root = { ...t.rest[J.pelvis] };
-    if (el.followRoot.checked && state.srcRef && src[J.pelvis].v >= VIS) {
+    if (!autoFraming() && el.followRoot.checked && state.srcRef && src[J.pelvis].v >= VIS) {
       const k = t.info.torso / state.srcRef.torso;
       // Limitado para que el personaje no se salga del cuadro.
       const clamp = (v, m) => Math.max(-m, Math.min(m, v));
@@ -405,36 +585,107 @@ function drawResult() {
         v: 1,
       };
     }
-    posed = retarget(t.rest, t.info, src, root);
+    // Con la cara visible, la inclinación de la cabeza sale de la línea de los ojos (sirve en primeros planos).
+    const angles = faceOn
+      ? { [J.head]: t.info.ang[J.head] + wrap(face.driver.eyeAngle() - face.rig.eyeAngle) }
+      : null;
+    posed = retarget(t.rest, t.info, src, root, angles);
   }
   state.posed = posed;
   boneTransforms(t.rest, posed, bones);
+
+  // Cara: gestos en el espacio del personaje y luego el movimiento rígido de la cabeza.
+  let faceDraw = null, mouthDraw = null;
+  if (face) {
+    if (faceOn && face.driver.ready) face.driver.computeTargets(face.targets);
+    else face.targets.set(face.rig.rest);
+    const k = J.head * 4, c = bones[k], sn = bones[k + 1], tx = bones[k + 2], ty = bones[k + 3];
+    const T = face.targets, P = face.pos;
+    for (let i = 0; i < face.rig.n; i++) {
+      const x = T[i * 2], y = T[i * 2 + 1];
+      P[i * 2] = c * x - sn * y + tx;
+      P[i * 2 + 1] = sn * x + c * y + ty;
+    }
+    faceDraw = { positions: P };
+    if (faceOn && face.driver.ready) mouthDraw = buildMouth(face);
+  }
+
+  updateView(src, posed, faceOn, dt);
   const bg = el.transparent.checked ? null : hexToRgb(el.bgColor.value);
-  renderer.render(bones, [t.padX, t.padY], bg, el.showWire.checked);
+  renderer.render({ bones, view: state.view, bg, wire: el.showWire.checked, face: faceDraw, mouth: mouthDraw });
 
   overlayCtx.clearRect(0, 0, el.overlay.width, el.overlay.height);
   if (el.showSkel.checked) {
-    drawSkeleton(overlayCtx, posed, { ox: t.padX, oy: t.padY, radius: Math.max(4, el.overlay.width / 180) });
+    const v = state.view;
+    drawSkeleton(overlayCtx, posed, { ox: v.ox, oy: v.oy, scale: v.scale, radius: Math.max(4, el.overlay.width / 180) });
   }
+}
+
+// Interior de la boca: el de la persona del video (dientes, lengua), deformado a la boca del personaje.
+function buildMouth(face) {
+  const lip = face.rig.innerLip, n = lip.length;
+  const src = face.driver.sourceInnerLip();
+  const P = face.pos, out = face.mouthPos, uv = face.mouthUv;
+  let tcx = 0, tcy = 0, scx = 0, scy = 0;
+  for (let i = 0; i < n; i++) {
+    tcx += P[lip[i] * 2]; tcy += P[lip[i] * 2 + 1];
+    scx += src[i * 2]; scy += src[i * 2 + 1];
+  }
+  tcx /= n; tcy /= n; scx /= n; scy /= n;
+  // Un poco más grande que el hueco: los labios (dibujados encima) tapan el borde.
+  const E = 1.12, { w, h } = state.srcSize;
+  const tp = (i) => [tcx + (P[lip[i] * 2] - tcx) * E, tcy + (P[lip[i] * 2 + 1] - tcy) * E];
+  const sp = (i) => [(scx + (src[i * 2] - scx) * E) / w, (scy + (src[i * 2 + 1] - scy) * E) / h];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, o = i * 6;
+    const [ax, ay] = tp(i), [bx, by] = tp(j), [au, av] = sp(i), [bu, bv] = sp(j);
+    out[o] = tcx; out[o + 1] = tcy; out[o + 2] = ax; out[o + 3] = ay; out[o + 4] = bx; out[o + 5] = by;
+    uv[o] = scx / w; uv[o + 1] = scy / h; uv[o + 2] = au; uv[o + 3] = av; uv[o + 4] = bu; uv[o + 5] = bv;
+  }
+  return { positions: out, uvs: uv, mode: 1 };
+}
+
+// Cámara: en modo "Como el video" se ajusta para mostrar lo mismo que muestra el video.
+function updateView(src, posed, faceOn, dt) {
+  if (!autoFraming()) {
+    state.view = fullView();
+    return;
+  }
+  const pairs = [];
+  if (src) {
+    for (let i = 0; i < N; i++) {
+      if (src[i].v < VIS) continue;
+      const w = i <= J.rsh || i === J.lhip || i === J.rhip ? 1 : 0.4;
+      pairs.push({ sx: src[i].x, sy: src[i].y, dx: posed[i].x, dy: posed[i].y, w });
+    }
+  }
+  if (faceOn) {
+    const P = state.target.face.pos;
+    for (const i of FACE_FRAMING) {
+      const p = state.face.lm[i];
+      pairs.push({ sx: p.x, sy: p.y, dx: P[i * 2], dy: P[i * 2 + 1], w: 1.5 });
+    }
+  }
+  const rect = state.camera.update(pairs, state.srcSize.w, state.srcSize.h, dt, state.snapCamera);
+  state.snapCamera = false;
+  state.view = rect ? fitView(rect, el.glCanvas.width, el.glCanvas.height) : fullView();
 }
 
 function frame(now) {
   const dt = Math.min(0.1, (now - state.lastTick) / 1000);
   state.lastTick = now;
-  let raw = null;
   if (state.source === 'demo') {
     if (state.playing) state.t += dt;
-    raw = demoPose(state.t);
-  } else if (state.playing) {
+    state.src = demoPose(state.t);
+  } else if (state.playing && state.landmarker && grabFrame()) {
     try {
-      raw = detectFrame(now);
+      detectFrame(now);
     } catch (err) {
       console.error(err);
     }
   }
-  if (raw) smoothInto(raw);
   drawSource();
-  if (state.target) drawResult();
+  if (state.target) drawResult(dt);
   requestAnimationFrame(frame);
 }
 
@@ -500,8 +751,12 @@ el.demoCharBtn.addEventListener('click', () => {
 });
 el.cutout.addEventListener('change', () => state.target && rebuildTexture());
 el.transparent.addEventListener('change', () => el.resultStage.classList.toggle('transparent', el.transparent.checked));
-el.recalBtn.addEventListener('click', () => {
-  state.srcRef = null;
+el.recalBtn.addEventListener('click', onCut);
+el.smoothing.addEventListener('change', resetFilters);
+el.framing.addEventListener('change', layout);
+el.animateFace.addEventListener('change', () => {
+  state.face = null;
+  state.target?.face?.driver.reset();
 });
 el.playBtn.addEventListener('click', () => {
   state.playing = !state.playing;

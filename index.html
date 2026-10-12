@@ -31,7 +31,7 @@
           </div>
         </div>
         <div class="stage"><canvas id="srcCanvas"></canvas></div>
-        <p class="hint">Un video con una persona de cuerpo completo funciona mejor.</p>
+        <p class="hint">Sirven planos de cuerpo completo y primeros planos de la cara; los cambios de plano se detectan solos.</p>
       </section>
 
       <section class="panel">
@@ -46,7 +46,7 @@
         <div class="row">
           <label class="check"><input id="cutout" type="checkbox" checked /> Recortar fondo con IA</label>
         </div>
-        <p class="hint">Arrastra los puntos del esqueleto para ajustarlo si la detección no es perfecta.</p>
+        <p class="hint">Si se ve bien la cara, también imitará gestos, parpadeos y la boca. Arrastra los puntos del esqueleto para ajustarlo.</p>
       </section>
 
       <section class="panel wide">
@@ -64,6 +64,13 @@
         <div class="controls">
           <label class="check"><input id="showSkel" type="checkbox" /> Mostrar esqueleto</label>
           <label class="check"><input id="showWire" type="checkbox" /> Ver malla</label>
+          <label class="field">Encuadre
+            <select id="framing">
+              <option value="auto" selected>Como el video</option>
+              <option value="full">Cuerpo completo</option>
+            </select>
+          </label>
+          <label class="check"><input id="animateFace" type="checkbox" checked /> Animar cara</label>
           <label class="check"><input id="followRoot" type="checkbox" checked /> Seguir desplazamiento</label>
           <label class="check"><input id="transparent" type="checkbox" /> Fondo transparente</label>
           <label class="field">Fondo <input id="bgColor" type="color" value="#1b1e27" /></label>

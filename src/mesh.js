@@ -68,6 +68,19 @@ function insideConvex(poly, x, y) {
   return true;
 }
 
+function blockVisible(data, w, h, x, y, st) {
+  for (let j = y; j < Math.min(h, y + st); j++) {
+    for (let i = x; i < Math.min(w, x + st); i++) if (data[(j * w + i) * 4 + 3] > 12) return true;
+  }
+  return false;
+}
+
+function fill(labels, w, h, x, y, st, v) {
+  for (let j = y; j < Math.min(h, y + st); j++) {
+    for (let i = x; i < Math.min(w, x + st); i++) labels[j * w + i] = v;
+  }
+}
+
 // Asigna cada píxel visible a una capa.
 function labelPixels(imageData, rest, scale) {
   const { width: w, height: h, data } = imageData;
@@ -76,28 +89,30 @@ function labelPixels(imageData, rest, scale) {
   const seg = [];
   for (let b = 1; b < N; b++) seg[b] = [rest[PARENT[b]], rest[b]];
   const d = new Float32Array(N);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  // En imágenes grandes se etiqueta 1 de cada 2×2 píxeles y se copia al bloque (4 veces más rápido).
+  const st = w * h > 700000 ? 2 : 1;
+  for (let y = 0; y < h; y += st) {
+    for (let x = 0; x < w; x += st) {
       const i = y * w + x;
-      if (data[i * 4 + 3] <= 12) continue;
+      if (data[i * 4 + 3] <= 12 && (st === 1 || !blockVisible(data, w, h, x, y, st))) continue;
       for (let b = 1; b < N; b++) d[b] = segDist(x, y, seg[b][0], seg[b][1]);
       // 1) Dentro del grosor de un brazo o pierna: es extremidad (los brazos tienen prioridad).
       let best = 0, bq = 1;
       for (const b of ARM_BONES) { const q = d[b] / (RADIUS[b] * scale); if (q < bq) { bq = q; best = b; } }
       if (!best) for (const b of LEG_BONES) { const q = d[b] / (RADIUS[b] * scale); if (q < bq) { bq = q; best = b; } }
-      if (best) { labels[i] = BONE_PART[best]; continue; }
+      if (best) { fill(labels, w, h, x, y, st, BONE_PART[best]); continue; }
       // 2) Cerca (pero fuera) del grosor estimado de una extremidad y fuera del torso:
       //    probablemente una manga ancha. Lo demás (pelo, torso, cabeza) es cuerpo.
       let nb = 1;
       for (let b = 2; b < N; b++) if (d[b] < d[nb]) nb = b;
       const limb = BONE_PART[nb] !== PART.body;
       if (limb && d[nb] < 1.8 * RADIUS[nb] * scale && !insideConvex(torso, x, y)) {
-        labels[i] = BONE_PART[nb];
+        fill(labels, w, h, x, y, st, BONE_PART[nb]);
         continue;
       }
       let bb = 1;
       for (let b = 2; b < N; b++) if (BONE_PART[b] === PART.body && d[b] < d[bb]) bb = b;
-      labels[i] = BONE_PART[bb];
+      fill(labels, w, h, x, y, st, BONE_PART[bb]);
     }
   }
   return labels;
@@ -212,6 +227,7 @@ export function buildRig(imageData, rest) {
   });
 
   const pos = [], uv = [], idx = [], wts = [], indices = [];
+  let bodyCount = 0;
   for (const part of DRAW_ORDER) {
     const bones = PART_BONES[part];
     const uOff = part === PART.body ? 0 : 0.5;
@@ -247,6 +263,7 @@ export function buildRig(imageData, rest) {
         indices.push(a, b, c, b, e, c);
       }
     }
+    if (part === PART.body) bodyCount = indices.length;
   }
   if (pos.length / 2 > 65535) throw new Error('La malla es demasiado grande.');
   return {
@@ -255,6 +272,7 @@ export function buildRig(imageData, rest) {
       pos: new Float32Array(pos), uv: new Float32Array(uv),
       idx: new Float32Array(idx), wts: new Float32Array(wts),
       indices: new Uint16Array(indices),
+      bodyCount,
     },
   };
 }
