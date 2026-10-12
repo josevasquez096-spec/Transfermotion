@@ -130,3 +130,9 @@ h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
   .stage { height: 280px; }
   .stage.result { height: 60vh; }
 }
+
+.offscreen {
+  position: fixed; left: 0; top: 0;
+  width: 2px; height: 2px;
+  opacity: 0; pointer-events: none;
+}

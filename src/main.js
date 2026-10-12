@@ -42,6 +42,10 @@ try {
   throw err;
 }
 
+// iOS exige estas propiedades (no solo los atributos) para reproducir en línea.
+el.video.muted = true;
+el.video.playsInline = true;
+
 const DEMO = demoCharacter();
 const bones = new Float32Array(19 * 4);
 
@@ -61,6 +65,7 @@ const state = {
   posed: null,
   recorder: null,
   drag: -1,
+  needsTap: false,
 };
 
 function setStatus(text, kind = '') {
@@ -238,6 +243,21 @@ function resetSource(type) {
   el.demoMotionBtn.classList.toggle('active', type === 'demo');
 }
 
+// iOS (sobre todo en modo de bajo consumo) puede bloquear play() fuera de un toque.
+// En ese caso pedimos al usuario que toque para reproducir.
+async function playVideo() {
+  try {
+    await el.video.play();
+    state.needsTap = false;
+    return true;
+  } catch (err) {
+    if (err.name !== 'NotAllowedError') throw err;
+    state.needsTap = true;
+    setStatus('Toca el video o «▶ Reproducir» para empezar', 'busy');
+    return false;
+  }
+}
+
 function startDemo() {
   stopStream();
   el.video.pause();
@@ -272,7 +292,7 @@ async function startVideo(file) {
     resetSource('video');
     state.mirror = false;
     state.srcSize = { w: el.video.videoWidth, h: el.video.videoHeight };
-    if (state.playing) await el.video.play();
+    if (state.playing && !(await playVideo())) return;
     setStatus('Video cargado ✓ — transfiriendo movimiento');
   } catch (err) {
     console.error(err);
@@ -282,9 +302,13 @@ async function startVideo(file) {
 
 async function startWebcam() {
   try {
-    await ensureVideoLandmarker();
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('este navegador no permite usar la cámara aquí.');
     stopStream();
-    state.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    await ensureVideoLandmarker();
     if (el.video.src) {
       URL.revokeObjectURL(el.video.src);
       el.video.removeAttribute('src');
@@ -294,7 +318,7 @@ async function startWebcam() {
     resetSource('webcam');
     state.mirror = true;
     state.srcSize = { w: el.video.videoWidth, h: el.video.videoHeight };
-    await el.video.play();
+    if (!(await playVideo())) return;
     setStatus('Cámara activa ✓ — ¡muévete!');
   } catch (err) {
     console.error(err);
@@ -473,9 +497,18 @@ el.recalBtn.addEventListener('click', () => {
 el.playBtn.addEventListener('click', () => {
   state.playing = !state.playing;
   el.playBtn.textContent = state.playing ? '⏸ Pausar' : '▶ Reproducir';
-  if (state.source === 'video') state.playing ? el.video.play() : el.video.pause();
+  if (state.source !== 'demo') {
+    if (state.playing) playVideo().then((ok) => ok && setStatus('Reproduciendo ✓'));
+    else el.video.pause();
+  }
 });
 el.recBtn.addEventListener('click', toggleRecording);
+el.srcCanvas.addEventListener('click', () => {
+  if (!state.needsTap || state.source === 'demo') return;
+  state.playing = true;
+  el.playBtn.textContent = '⏸ Pausar';
+  playVideo().then((ok) => ok && setStatus('Reproduciendo ✓'));
+});
 window.addEventListener('resize', () => state.target && drawCharacter());
 
 // Arranque: personaje y movimiento de demostración, sin necesidad de descargar nada.
