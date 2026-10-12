@@ -66,6 +66,9 @@ const FACE_FRAMING = [33, 263, 1, 152, 10, 234, 454, 61, 291];
 const FACE_DOTS = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152,
   148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 33, 160, 158, 133, 153, 144, 362,
   385, 387, 263, 373, 380, 61, 40, 37, 0, 267, 270, 291, 321, 314, 17, 84, 91, 13, 14, 1, 468, 473];
+// Puntos de la cara que también da el detector de cuerpo (nariz, ojos, orejas, boca): sirven para
+// encuadrar primeros planos aunque el personaje no tenga malla facial.
+const POSE_FACE = [0, 2, 5, 7, 8, 9, 10];
 const LOST_LIMIT = 6;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -107,11 +110,31 @@ function setStatus(text, kind = '') {
 
 const cloneJoints = (js) => js.map((p) => ({ x: p.x, y: p.y, v: 1 }));
 
-function setTarget(base, rest, mask, faceLm = null) {
-  state.target = { base, rest: cloneJoints(rest), mask, faceLm, w: base.width, h: base.height };
+function setTarget(base, rest, mask, faceLm = null, poseFace = null) {
+  state.target = { base, rest: cloneJoints(rest), mask, faceLm, poseFace, w: base.width, h: base.height };
   state.srcRef = null;
   rebuildTexture();
   setupFace();
+}
+
+// Color medio (0..1) de pequeños parches alrededor de unos puntos de la cara.
+function sampleColor(img, lm, ids) {
+  const { width: w, height: h, data } = img;
+  const sum = [0, 0, 0];
+  let n = 0;
+  for (const id of ids) {
+    const cx = Math.round(lm[id].x), cy = Math.round(lm[id].y);
+    for (let y = cy - 2; y <= cy + 2; y++) {
+      for (let x = cx - 2; x <= cx + 2; x++) {
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const i = (y * w + x) * 4;
+        if (data[i + 3] < 128) continue;
+        sum[0] += data[i]; sum[1] += data[i + 1]; sum[2] += data[i + 2];
+        n++;
+      }
+    }
+  }
+  return n ? sum.map((v) => v / n / 255) : null;
 }
 
 // Malla de la cara del personaje (si se detectó): ojos, cejas, boca, y un anillo para pelo y orejas.
@@ -130,6 +153,9 @@ function setupFace() {
   renderer.setFaceMesh({ uv: rig.uv, indices: rig.indices });
   t.face = {
     rig,
+    // Colores del personaje para recolorear el interior de la boca del video.
+    lip: sampleColor(t.imageData, t.faceLm, [61, 291, 0, 17, 37, 267, 84, 314, 40, 270, 91, 321]),
+    skin: sampleColor(t.imageData, t.faceLm, [50, 280, 101, 330, 205, 425]),
     driver: new FaceDriver(rig),
     targets: new Float32Array(rig.n * 2),
     pos: new Float32Array(rig.n * 2),
@@ -263,8 +289,10 @@ async function loadCharacter(file) {
     const joints = res.landmarks?.[0] ? fromLandmarks(res.landmarks[0], base.width, base.height) : null;
     setStatus('Buscando la cara del personaje…', 'busy');
     const faceLm = await detectCharacterFace(base, joints);
+    const lm0 = res.landmarks?.[0];
+    const poseFace = lm0 ? POSE_FACE.map((i) => ({ x: lm0[i].x * base.width, y: lm0[i].y * base.height })) : null;
     if (joints) {
-      setTarget(base, joints, mask, faceLm);
+      setTarget(base, joints, mask, faceLm, poseFace);
       setStatus(faceLm
         ? 'Personaje listo ✓ — cuerpo y cara detectados'
         : 'Personaje listo ✓ — no se encontró la cara, solo se animará el cuerpo');
@@ -347,6 +375,7 @@ function stopStream() {
 function resetSource(type) {
   state.source = type;
   state.src = null;
+  state.srcFace = null;
   state.face = null;
   state.lastVideoTime = -1;
   onCut();
@@ -374,12 +403,17 @@ function resetFilters() {
 
 // Cambio de plano (o el video volvió a empezar): nada del plano anterior sirve.
 function onCut() {
+  state.cutCount = (state.cutCount ?? 0) + 1;
   state.jointFilter?.reset();
   state.faceFilter?.reset();
   state.cuts?.reset();
   state.srcRef = null;
   state.snapCamera = true;
   state.target?.face?.driver.reset();
+  // Los puntos del plano anterior ya no valen: hasta la próxima detección no se usan.
+  state.src?.forEach((p) => { p.v = 0; });
+  state.srcFace = null;
+  if (state.face) state.face.lost = LOST_LIMIT;
 }
 
 // iOS (sobre todo en modo de bajo consumo) puede bloquear play() fuera de un toque.
@@ -498,9 +532,14 @@ function detectFrame(now) {
     raw.forEach((p, i) => { jointVec[i * 2] = p.x; jointVec[i * 2 + 1] = p.y; });
     const f = state.jointFilter.filter(jointVec, t);
     state.src = raw.map((p, i) => ({ x: f[i * 2], y: f[i * 2 + 1], v: p.v }));
+    state.srcFace = POSE_FACE.map((i) => {
+      const q = lm[i], inside = q.x > 0 && q.x < 1 && q.y > 0 && q.y < 1;
+      return { x: q.x * w, y: q.y * h, v: inside ? (q.visibility ?? 1) : 0 };
+    });
     state.poseLost = 0;
   } else if (state.src && ++state.poseLost > LOST_LIMIT) {
     state.src.forEach((p) => { p.v = 0; });
+    state.srcFace = null;
   }
 
   // Cara (solo si el personaje tiene cara que animar)
@@ -642,7 +681,7 @@ function buildMouth(face) {
     out[o] = tcx; out[o + 1] = tcy; out[o + 2] = ax; out[o + 3] = ay; out[o + 4] = bx; out[o + 5] = by;
     uv[o] = scx / w; uv[o + 1] = scy / h; uv[o + 2] = au; uv[o + 3] = av; uv[o + 4] = bu; uv[o + 5] = bv;
   }
-  return { positions: out, uvs: uv, mode: 1 };
+  return { positions: out, uvs: uv, mode: 1, lip: face.lip, skin: face.skin };
 }
 
 // Cámara: en modo "Como el video" se ajusta para mostrar lo mismo que muestra el video.
@@ -659,13 +698,23 @@ function updateView(src, posed, faceOn, dt) {
       pairs.push({ sx: src[i].x, sy: src[i].y, dx: posed[i].x, dy: posed[i].y, w });
     }
   }
+  const t = state.target;
   if (faceOn) {
-    const P = state.target.face.pos;
+    const P = t.face.pos;
     for (const i of FACE_FRAMING) {
       const p = state.face.lm[i];
       pairs.push({ sx: p.x, sy: p.y, dx: P[i * 2], dy: P[i * 2 + 1], w: 1.5 });
     }
+  } else if (t.poseFace && state.srcFace) {
+    // Sin malla facial: ojos, orejas y boca del detector de cuerpo, movidos con el hueso de la cabeza.
+    const k = J.head * 4, c = bones[k], sn = bones[k + 1], tx = bones[k + 2], ty = bones[k + 3];
+    state.srcFace.forEach((p, n) => {
+      if (p.v < VIS) return;
+      const q = t.poseFace[n];
+      pairs.push({ sx: p.x, sy: p.y, dx: c * q.x - sn * q.y + tx, dy: sn * q.x + c * q.y + ty, w: 1.2 });
+    });
   }
+  state.lastPairs = pairs;
   const rect = state.camera.update(pairs, state.srcSize.w, state.srcSize.h, dt, state.snapCamera);
   state.snapCamera = false;
   state.view = rect ? fitView(rect, el.glCanvas.width, el.glCanvas.height) : fullView();
@@ -780,3 +829,6 @@ setTarget(DEMO.canvas, DEMO.rest, null);
 startDemo();
 setStatus('Listo — sube un video y una imagen, o prueba la demo');
 requestAnimationFrame(frame);
+
+// Depuración: ?debug expone el estado en la consola.
+if (new URLSearchParams(location.search).has('debug')) window.__tm = { state, el, bones };
