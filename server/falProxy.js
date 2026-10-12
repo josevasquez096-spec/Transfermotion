@@ -17,8 +17,9 @@ const ALLOWED = [
   { method: 'GET', url: /^https:\/\/queue\.fal\.run\/fal-ai\/wan\/requests\/[A-Za-z0-9-]+(\/status)?(\?logs=[01])?$/ },
   // Cancelar
   { method: 'PUT', url: /^https:\/\/queue\.fal\.run\/fal-ai\/wan\/requests\/[A-Za-z0-9-]+\/cancel$/ },
-  // Pedir una URL firmada para subir un archivo (la subida en sí va directa del navegador a fal)
-  { method: 'POST', url: /^https:\/\/rest\.fal\.ai\/storage\/upload\/initiate\?storage_type=fal-cdn-v3$/ },
+  // Pedir una URL firmada para subir un archivo (la subida en sí va directa del navegador a fal).
+  // Los archivos de más de 90 MB se suben por partes (initiate-multipart).
+  { method: 'POST', url: /^https:\/\/rest\.fal\.ai\/storage\/upload\/initiate(-multipart)?\?storage_type=fal-cdn-v3$/ },
 ];
 
 const MAX_BODY = 64 * 1024;
@@ -29,10 +30,11 @@ function same(a, b) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+// Respuestas propias del proxy (marcadas con source: 'proxy' para no confundirlas con las de fal.ai).
 const reply = (status, data) => ({
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  body: JSON.stringify(data),
+  body: JSON.stringify({ ...data, source: 'proxy' }),
 });
 
 // req: { method, headers (minúsculas), body (string | undefined) }. Devuelve { status, headers, body }.
@@ -50,13 +52,19 @@ export async function proxyFal(req, env = process.env, fetchImpl = fetch) {
     if (method !== 'GET') return reply(400, { error: 'Falta la cabecera x-fal-target-url.' });
     return reply(200, { configured, missing: [!env.FAL_KEY && 'FAL_KEY', !env.TM_PASSWORD && 'TM_PASSWORD'].filter(Boolean) });
   }
-  if (!configured) return reply(503, { error: 'El servidor no tiene configuradas FAL_KEY y TM_PASSWORD.' });
-  if (!same(h(PASSWORD_HEADER), env.TM_PASSWORD)) return reply(401, { error: 'Contraseña incorrecta.' });
+  // (500 y no 503: el cliente de fal reintenta los 503 y el aviso tardaría en llegar.)
+  if (!configured) {
+    return reply(500, { error: 'El servidor no tiene configuradas FAL_KEY y TM_PASSWORD.', code: 'not_configured' });
+  }
+  // La app manda la contraseña codificada con encodeURIComponent (así admite cualquier carácter).
+  if (!same(h(PASSWORD_HEADER), encodeURIComponent(env.TM_PASSWORD))) {
+    return reply(401, { error: 'Contraseña incorrecta.', code: 'bad_password' });
+  }
   if (!ALLOWED.some((a) => a.method === method && a.url.test(target))) {
-    return reply(403, { error: 'Destino no permitido.' });
+    return reply(403, { error: 'Destino no permitido.', code: 'blocked' });
   }
   const body = method === 'GET' ? undefined : (req.body ?? '');
-  if (body && body.length > MAX_BODY) return reply(413, { error: 'Petición demasiado grande.' });
+  if (body && body.length > MAX_BODY) return reply(413, { error: 'Petición demasiado grande.', code: 'too_large' });
 
   // Se reenvían las cabeceras x-fal-* del cliente (prioridad de cola, ciclo de vida de archivos...).
   const headers = {
@@ -72,7 +80,7 @@ export async function proxyFal(req, env = process.env, fetchImpl = fetch) {
   try {
     res = await fetchImpl(target, { method, headers, body: body || undefined });
   } catch (err) {
-    return reply(502, { error: `No se pudo contactar con fal.ai: ${err.message}` });
+    return reply(502, { error: `No se pudo contactar con fal.ai: ${err.message}`, code: 'upstream' });
   }
   return {
     status: res.status,
@@ -93,7 +101,8 @@ export async function readBody(req) {
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > MAX_BODY) break;
+    // Demasiado grande: se devuelve algo mayor que el límite para que proxyFal responda 413.
+    if (size > MAX_BODY) return 'x'.repeat(MAX_BODY + 1);
     chunks.push(c);
   }
   return Buffer.concat(chunks).toString('utf8');

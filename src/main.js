@@ -6,7 +6,7 @@ import { getVideoLandmarker, getImageLandmarker, getFaceVideoLandmarker, getFace
 import { buildFaceRig, FaceDriver } from './face.js';
 import { OneEuro, CutDetector } from './filters.js';
 import { FramingCamera, fitView } from './camera.js';
-import { generate, serverStatus, explainError, PRICE_PER_SECOND } from './genai.js';
+import { generate, resume, pendingJob, forgetJob, serverStatus, explainError, PRICE_PER_SECOND } from './genai.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -36,6 +36,7 @@ const el = {
   aiPassword: $('aiPassword'),
   aiBtn: $('aiBtn'),
   aiCancel: $('aiCancel'),
+  aiResume: $('aiResume'),
   aiInfo: $('aiInfo'),
   aiStatus: $('aiStatus'),
   aiResult: $('aiResult'),
@@ -303,11 +304,11 @@ function loadImage(url) {
 }
 
 async function loadCharacter(file) {
-  state.imageFile = file;
-  updateAiInfo();
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
+    state.imageFile = file;
+    updateAiInfo();
     const s = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
     const base = document.createElement('canvas');
     base.width = Math.round(img.naturalWidth * s);
@@ -472,6 +473,8 @@ function startDemo() {
   stopStream();
   el.video.pause();
   resetSource('demo');
+  state.videoFile = null;
+  updateAiInfo();
   state.mirror = false;
   setSourceSize(DEMO_SIZE.w, DEMO_SIZE.h);
   setStatus('Movimiento de demostración');
@@ -493,6 +496,10 @@ function waitForMetadata(video) {
 }
 
 async function startVideo(file) {
+  // La IA del servidor no necesita MediaPipe ni decodificar el video aquí.
+  state.videoFile = file;
+  state.videoDuration = NaN;
+  updateAiInfo();
   try {
     stopStream();
     await ensureVideoLandmarker();
@@ -502,7 +509,6 @@ async function startVideo(file) {
     resetSource('video');
     state.mirror = false;
     setSourceSize(el.video.videoWidth, el.video.videoHeight);
-    state.videoFile = file;
     state.videoDuration = el.video.duration;
     updateAiInfo();
     if (state.playing && !(await playVideo())) return;
@@ -529,6 +535,8 @@ async function startWebcam() {
     el.video.srcObject = state.stream;
     await waitForMetadata(el.video);
     resetSource('webcam');
+    state.videoFile = null;
+    updateAiInfo();
     state.mirror = true;
     setSourceSize(el.video.videoWidth, el.video.videoHeight);
     if (!(await playVideo())) return;
@@ -849,7 +857,7 @@ function toggleRecording() {
 
 // ---------- IA avanzada (servidor) ----------
 
-const ai = { status: null, busy: false, abort: null };
+const ai = { status: null, busy: false, abort: null, file: null };
 const storageGet = (k) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } };
 const storageSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
 
@@ -859,21 +867,28 @@ function aiCost() {
 }
 
 function updateAiInfo() {
+  if (!el.aiInfo) return;
   const missing = [!state.videoFile && 'sube un video (paso 1)', !state.imageFile && 'sube una foto (paso 2)'].filter(Boolean);
   const cost = aiCost();
   if (missing.length) el.aiInfo.textContent = `Para usarla: ${missing.join(' y ')}.`;
-  else if (cost) el.aiInfo.textContent = `Video de ${cost.secs.toFixed(1)} s · costo aproximado: $${cost.usd.toFixed(2)} USD (${el.aiRes.value}).`
-    + (cost.secs > 15 ? ' Consejo: recorta el video en tu galería para pagar menos.' : '');
-  else el.aiInfo.textContent = '';
-  el.aiBtn.disabled = ai.busy || missing.length > 0 || !ai.status?.configured;
+  else if (cost) {
+    el.aiInfo.textContent = `Video de ${cost.secs.toFixed(1)} s · costo aproximado: $${cost.usd.toFixed(2)} USD (${el.aiRes.value}).`
+      + (cost.secs > 15 ? ' Consejo: recorta el video en tu galería para pagar menos.' : '');
+  } else el.aiInfo.textContent = '';
+  const ready = !ai.busy && !!ai.status?.configured;
+  el.aiBtn.disabled = !ready || missing.length > 0;
+  el.aiResume.hidden = !pendingJob() || ai.busy;
+  el.aiResume.disabled = !ready;
 }
 
 async function checkAiServer() {
   ai.status = await serverStatus();
   if (!ai.status.available) {
     el.aiSetup.hidden = false;
-    el.aiSetup.innerHTML = 'Esta función necesita el servidor de la app (la versión publicada en Vercel). '
-      + 'En una copia estática no está disponible.';
+    el.aiSetup.innerHTML = ai.status.network
+      ? 'No se pudo contactar con el servidor. <button type="button" class="btn small" id="aiRetry">Reintentar</button>'
+      : 'Esta función necesita el servidor de la app (la versión publicada en Vercel). En una copia estática no está disponible.';
+    document.getElementById('aiRetry')?.addEventListener('click', checkAiServer);
   } else if (!ai.status.configured) {
     el.aiSetup.hidden = false;
     el.aiSetup.innerHTML = 'Falta configurar el servidor: en Vercel → tu proyecto → Settings → Environment Variables, añade '
@@ -890,39 +905,41 @@ function aiSetStatus(text, error = false) {
   el.aiStatus.classList.toggle('error', error);
 }
 
-async function runAi() {
-  const cost = aiCost();
-  const price = cost ? `unos $${cost.usd.toFixed(2)} USD` : 'un importe según la duración del video';
+function showAiResult(url) {
+  el.aiVideo.src = url;
+  el.aiDownload.href = url;
+  el.aiResult.hidden = false;
+  ai.file = null;
+  // Copia local del video: así «Descargar» guarda el archivo (y en iPhone abre «Guardar video»).
+  fetch(url)
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status))))
+    .then((b) => {
+      ai.file = new File([b], 'transfer-motion-ia.mp4', { type: b.type || 'video/mp4' });
+      el.aiDownload.href = URL.createObjectURL(ai.file);
+    })
+    .catch(() => { /* queda el enlace directo, que se abre en otra pestaña */ });
+  aiSetStatus('¡Listo! ✓');
+  el.aiResult.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function aiJob(run) {
   if (!el.aiPassword.value) {
     aiSetStatus('Escribe la contraseña de la app (TM_PASSWORD).', true);
     el.aiPassword.focus();
     return;
   }
-  if (!window.confirm(`Se generará el video con IA en fal.ai y se cobrará ${price} a tu cuenta. ¿Continuar?`)) return;
   storageSet('tm-ai-password', el.aiPassword.value);
   ai.busy = true;
   ai.abort = new AbortController();
   el.aiCancel.hidden = false;
-  el.aiResult.hidden = true;
   updateAiInfo();
   try {
-    const { url } = await generate({
-      mode: el.aiMode.value,
-      video: state.videoFile,
-      image: state.imageFile,
-      password: el.aiPassword.value,
-      resolution: el.aiRes.value,
-      signal: ai.abort.signal,
-      onStatus: (t) => aiSetStatus(t),
-    });
-    el.aiVideo.src = url;
-    el.aiDownload.href = url;
-    el.aiResult.hidden = false;
-    aiSetStatus('¡Listo! ✓ Si no se descarga con el botón, mantén pulsado el video y guárdalo.');
-    el.aiResult.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const { url } = await run({ password: el.aiPassword.value, signal: ai.abort.signal, onStatus: (t) => aiSetStatus(t) });
+    showAiResult(url);
   } catch (err) {
     console.error(err);
-    if (err?.name === 'AbortError') aiSetStatus('Cancelado.', true);
+    if (err?.name === 'AbortError') aiSetStatus('Cancelado. Si la IA ya había empezado, fal.ai puede cobrar lo procesado.', true);
+    else if (pendingJob()) aiSetStatus(`Se perdió la conexión. Pulsa «Recuperar el último video» para seguir esperándolo. (${explainError(err)})`, true);
     else aiSetStatus(`No se pudo generar: ${explainError(err)}`, true);
   } finally {
     ai.busy = false;
@@ -930,6 +947,20 @@ async function runAi() {
     el.aiCancel.hidden = true;
     updateAiInfo();
   }
+}
+
+function runAi() {
+  const cost = aiCost();
+  const price = cost ? `unos $${cost.usd.toFixed(2)} USD` : 'un importe según la duración del video';
+  if (el.aiPassword.value && !window.confirm(`Se generará el video con IA en fal.ai y se cobrará ${price} a tu cuenta. ¿Continuar?`)) return;
+  if (pendingJob()) forgetJob();
+  aiJob((o) => generate({
+    ...o,
+    mode: el.aiMode.value,
+    video: state.videoFile,
+    image: state.imageFile,
+    resolution: el.aiRes.value,
+  }));
 }
 
 // ---------- Eventos ----------
@@ -948,6 +979,8 @@ el.webcamBtn.addEventListener('click', startWebcam);
 el.demoMotionBtn.addEventListener('click', startDemo);
 el.demoCharBtn.addEventListener('click', () => {
   setTarget(DEMO.canvas, DEMO.rest, null);
+  state.imageFile = null;
+  updateAiInfo();
   setStatus('Personaje de demostración');
 });
 el.cutout.addEventListener('change', () => state.target && rebuildTexture());
@@ -972,8 +1005,17 @@ el.playBtn.addEventListener('click', () => {
 });
 el.recBtn.addEventListener('click', toggleRecording);
 el.aiBtn.addEventListener('click', runAi);
+el.aiResume.addEventListener('click', () => aiJob((o) => resume(o)));
 el.aiCancel.addEventListener('click', () => ai.abort?.abort());
 el.aiRes.addEventListener('change', updateAiInfo);
+el.aiDownload.addEventListener('click', (e) => {
+  // iPhone: la hoja de compartir permite «Guardar video» en Fotos (necesita el toque del usuario).
+  if (ai.file && navigator.canShare?.({ files: [ai.file] })) {
+    e.preventDefault();
+    navigator.share({ files: [ai.file] }).catch(() => {});
+  }
+});
+window.addEventListener('online', () => { if (!ai.status?.configured) checkAiServer(); });
 el.aiPassword.value = storageGet('tm-ai-password');
 el.srcCanvas.addEventListener('click', () => {
   if (!state.needsTap || state.source === 'demo') return;

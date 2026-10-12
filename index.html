@@ -104,12 +104,13 @@
           <label class="field">Contraseña <input id="aiPassword" type="password" autocomplete="current-password" /></label>
           <button id="aiBtn" class="btn primary">✨ Generar con IA</button>
           <button id="aiCancel" class="btn ghost small" hidden>Cancelar</button>
+          <button id="aiResume" class="btn ghost small" hidden>Recuperar el último video</button>
         </div>
         <p id="aiInfo" class="hint"></p>
         <p id="aiStatus" class="ai-status" role="status"></p>
         <div id="aiResult" class="ai-result" hidden>
           <video id="aiVideo" controls playsinline loop></video>
-          <a id="aiDownload" class="btn" download="transfer-motion-ia.mp4">⬇ Descargar video</a>
+          <a id="aiDownload" class="btn" download="transfer-motion-ia.mp4" target="_blank" rel="noopener">⬇ Descargar video</a>
         </div>
       </section>
     </main>

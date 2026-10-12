@@ -167,4 +167,5 @@ h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .ai-status { margin: 8px 2px 0; font-size: 14px; color: var(--accent); min-height: 1.2em; }
 .ai-status.error { color: var(--accent-2); }
 .ai-result { margin-top: 12px; display: grid; gap: 10px; justify-items: start; }
+.ai-result[hidden] { display: none; }
 .ai-result video { max-width: 100%; max-height: 70vh; border-radius: 12px; background: #000; }
