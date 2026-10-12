@@ -547,7 +547,9 @@ export class FaceDriver {
       const E = EYES[e];
       let f = 1;
       if (this.refGap[e] > 0.07 * dist(ref, 33, 263)) {
-        f = clamp((this.lidSum(al, E) / this.refGap[e] - 0.2) / 0.8, 0, 1.4);
+        // Fiel hasta medio cerrar; por debajo cierra antes (MediaPipe rara vez junta los párpados).
+        const r = this.lidSum(al, E) / this.refGap[e];
+        f = r >= 0.5 ? Math.min(r, 1.4) : Math.max(0, (r - 0.2) / 0.6);
       }
       const bl = this.curBlink[e];
       if (bl >= 0) {
