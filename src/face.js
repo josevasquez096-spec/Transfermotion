@@ -192,9 +192,10 @@ function jawRig(R) {
   const hw = dist(R, 61, 291) / 2 || 1;
   const L = along(152) - along(14) || 1;
   const upperPoly = [61, ...OUTER_UP, 291, ...LIP_UP.slice(1, -1).reverse()];
-  const upper = new Set([...OUTER_UP, ...LIP_UP.slice(1, -1)]);
+  const upper = new Set([...OUTER_UP, ...LIP_UP.slice(1, -1)]), lowerLip = new Set(LIP_LO);
   for (let i = 0; i < 468; i++) {
-    if (upper.has(i) || inside(R, upperPoly, R[i * 2], R[i * 2 + 1])) continue;
+    // Con la boca cerrada el labio inferior toca el superior: nunca se excluye por estar "dentro".
+    if (upper.has(i) || (!lowerLip.has(i) && inside(R, upperPoly, R[i * 2], R[i * 2 + 1]))) continue;
     const x = across(i);
     let k = -1, f = 0;
     for (let j = 0; j < 10; j++) {
@@ -348,7 +349,9 @@ function neutralScore(p, bs) {
   if (jaw !== undefined) {
     return jaw + 0.5 * ((bsGet(bs, 'eyeBlinkLeft') ?? 0) + (bsGet(bs, 'eyeBlinkRight') ?? 0))
       + 0.5 * ((bsGet(bs, 'mouthSmileLeft') ?? 0) + (bsGet(bs, 'mouthSmileRight') ?? 0))
-      + 0.3 * (bsGet(bs, 'browInnerUp') ?? 0) + turn;
+      + 0.3 * (bsGet(bs, 'browInnerUp') ?? 0) + turn
+      // Labios separados aunque jawOpen sea bajo: tampoco es una cara neutra.
+      + clamp((2 * gapAlong(p, 13, 14, dx, dy)) / e, 0, 1);
   }
   // Sin blendshapes: apertura de labios, párpados y comisuras elevadas medidas en la malla.
   const mouth = clamp((2 * gapAlong(p, 13, 14, dx, dy)) / e, 0, 1);

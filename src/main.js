@@ -1,5 +1,5 @@
 import { J, N, VIS, fromLandmarks, restInfo, retarget, boneTransforms, drawSkeleton, dist } from './skeleton.js';
-import { buildRig } from './mesh.js';
+import { buildRig, skinWeights } from './mesh.js';
 import { Renderer } from './renderer.js';
 import { demoPose, demoCharacter, DEMO_SIZE } from './demo.js';
 import { getVideoLandmarker, getImageLandmarker, getFaceVideoLandmarker, getFaceImageLandmarker } from './pose.js';
@@ -150,7 +150,8 @@ function setupFace() {
     rig.uv[i * 2] = rig.rest[i * 2] / t.w;
     rig.uv[i * 2 + 1] = rig.rest[i * 2 + 1] / t.h;
   }
-  renderer.setFaceMesh({ uv: rig.uv, indices: rig.indices });
+  // La franja exterior (anillo 1 → 2) se dibuja encima del cuerpo sin taparlo: es la transición.
+  renderer.setFaceMesh({ uv: rig.uv, indices: rig.indices, inner: rig.indices.length - rig.ring2.length * 6 });
   t.face = {
     rig,
     // Colores del personaje para recolorear el interior de la boca del video.
@@ -162,6 +163,17 @@ function setupFace() {
     mouthPos: new Float32Array(rig.innerLip.length * 6),
     mouthUv: new Float32Array(rig.innerLip.length * 6),
   };
+  updateRingSkin();
+  // Si ya hay una cara en el video (p. ej. en pausa), el personaje nuevo la copia enseguida.
+  if (state.face && state.face.lost < LOST_LIMIT) t.face.driver.update(state.face.lm, state.face.blend);
+}
+
+// El borde exterior de la cara se deforma con los mismos huesos y pesos que la capa del cuerpo,
+// para que ambas coincidan en la costura (si fuera rígido con la cabeza, la imagen se rasgaría).
+function updateRingSkin() {
+  const t = state.target, rig = t.face.rig;
+  const scale = dist(t.rest[J.pelvis], t.rest[J.chest]) || t.h / 3;
+  t.face.ringSkin = rig.ring2.map((i) => skinWeights(t.rest, scale, rig.rest[i * 2], rig.rest[i * 2 + 1]));
 }
 
 function rebuildTexture() {
@@ -183,7 +195,6 @@ function rebuildTexture() {
   }
   t.composite = c;
   t.imageData = img;
-  renderer.setFaceTexture(c);
   rebuildMesh();
 }
 
@@ -192,7 +203,9 @@ function rebuildMesh() {
   t.info = restInfo(t.rest);
   const rig = buildRig(t.imageData, t.rest);
   renderer.setTexture(rig.atlas);
+  renderer.setFaceTexture(rig.face);
   renderer.setMesh(rig.mesh);
+  if (t.face) updateRingSkin();
   // Margen para que brazos y piernas extendidos quepan, incluso en imágenes estrechas.
   t.padY = Math.round(0.22 * Math.max(t.w, t.h));
   t.padX = Math.max(t.padY, Math.round(0.6 * t.h - t.w / 2));
@@ -546,7 +559,18 @@ function detectFrame(now) {
   if (!state.target?.face || !el.animateFace.checked) return;
   const fr = state.faceLandmarker.detectForVideo(frameCanvas, now);
   const flm = fr.faceLandmarks?.[0];
-  if (!flm) {
+  // Con varias personas, la cara debe ser la del cuerpo seguido (su nariz dentro de la cara).
+  let same = !!flm;
+  if (flm && lm) {
+    let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+    for (const p of flm) {
+      if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
+      if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+    }
+    const mx = (x1 - x0) * 0.25, my = (y1 - y0) * 0.25, nose = lm[0];
+    same = nose.x > x0 - mx && nose.x < x1 + mx && nose.y > y0 - my && nose.y < y1 + my;
+  }
+  if (!same) {
     if (state.face) state.face.lost++;
     return;
   }
@@ -607,7 +631,12 @@ function drawResult(dt) {
   const t = state.target;
   const src = state.src ?? (state.source !== 'demo' ? NO_BODY : null);
   const face = t.face;
-  const faceOn = faceActive();
+  const faceOn = faceActive() && face.driver.ready;
+  // Gestos de la cara en el espacio del personaje (sin el movimiento rígido de la cabeza).
+  if (face) {
+    if (faceOn) face.driver.computeTargets(face.targets);
+    else face.targets.set(face.rig.rest);
+  }
   let posed = t.rest;
   if (src) {
     if (!state.srcRef && src[J.pelvis].v >= VIS && src[J.chest].v >= VIS) {
@@ -625,19 +654,19 @@ function drawResult(dt) {
       };
     }
     // Con la cara visible, la inclinación de la cabeza sale de la línea de los ojos (sirve en primeros planos).
+    // Se compara con la línea de los ojos ya deformada: así el giro no se cuenta dos veces.
+    const T = face?.targets;
     const angles = faceOn
-      ? { [J.head]: t.info.ang[J.head] + wrap(face.driver.eyeAngle() - face.rig.eyeAngle) }
+      ? { [J.head]: t.info.ang[J.head] + wrap(face.driver.eyeAngle() - Math.atan2(T[527] - T[67], T[526] - T[66])) }
       : null;
     posed = retarget(t.rest, t.info, src, root, angles);
   }
   state.posed = posed;
   boneTransforms(t.rest, posed, bones);
 
-  // Cara: gestos en el espacio del personaje y luego el movimiento rígido de la cabeza.
+  // Cara: movimiento rígido de la cabeza, salvo el borde exterior, que sigue a la capa del cuerpo.
   let faceDraw = null, mouthDraw = null;
   if (face) {
-    if (faceOn && face.driver.ready) face.driver.computeTargets(face.targets);
-    else face.targets.set(face.rig.rest);
     const k = J.head * 4, c = bones[k], sn = bones[k + 1], tx = bones[k + 2], ty = bones[k + 3];
     const T = face.targets, P = face.pos;
     for (let i = 0; i < face.rig.n; i++) {
@@ -645,8 +674,19 @@ function drawResult(dt) {
       P[i * 2] = c * x - sn * y + tx;
       P[i * 2 + 1] = sn * x + c * y + ty;
     }
+    face.rig.ring2.forEach((i, r) => {
+      const x = T[i * 2], y = T[i * 2 + 1];
+      let px = 0, py = 0;
+      for (const [b, w] of face.ringSkin[r]) {
+        const o = b * 4;
+        px += w * (bones[o] * x - bones[o + 1] * y + bones[o + 2]);
+        py += w * (bones[o + 1] * x + bones[o] * y + bones[o + 3]);
+      }
+      P[i * 2] = px;
+      P[i * 2 + 1] = py;
+    });
     faceDraw = { positions: P };
-    if (faceOn && face.driver.ready) mouthDraw = buildMouth(face);
+    if (faceOn) mouthDraw = buildMouth(face);
   }
 
   updateView(src, posed, faceOn, dt);
@@ -800,7 +840,10 @@ el.demoCharBtn.addEventListener('click', () => {
 });
 el.cutout.addEventListener('change', () => state.target && rebuildTexture());
 el.transparent.addEventListener('change', () => el.resultStage.classList.toggle('transparent', el.transparent.checked));
-el.recalBtn.addEventListener('click', onCut);
+el.recalBtn.addEventListener('click', () => {
+  state.srcRef = null;
+  state.snapCamera = true;
+});
 el.smoothing.addEventListener('change', resetFilters);
 el.framing.addEventListener('change', layout);
 el.animateFace.addEventListener('change', () => {

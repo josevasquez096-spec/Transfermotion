@@ -147,7 +147,9 @@ function wireIndices(t, count) {
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
-    const gl = canvas.getContext('webgl', { premultipliedAlpha: true, preserveDrawingBuffer: true, alpha: true });
+    const gl = canvas.getContext('webgl', {
+      premultipliedAlpha: true, preserveDrawingBuffer: true, alpha: true, stencil: true,
+    });
     if (!gl) throw new Error('WebGL no está disponible en este navegador.');
     this.gl = gl;
     this.prog = program(gl, VS, FS, ['a_pos', 'a_uv', 'a_idx', 'a_w']);
@@ -171,8 +173,10 @@ export class Renderer {
     // Cara: UVs e índices fijos, posiciones nuevas en cada fotograma.
     this.face = {
       pos: gl.createBuffer(), uv: gl.createBuffer(), el: gl.createBuffer(), wire: gl.createBuffer(),
-      n: 0, count: 0, wireCount: 0,
+      n: 0, count: 0, wireCount: 0, inner: 0,
     };
+    // Con stencil, la cabeza estática de la capa del cuerpo no se dibuja bajo la cara animada.
+    this.hasStencil = !!gl.getContextAttributes()?.stencil;
     // Boca: lista de triángulos que cambia en cada fotograma (capacidad en bytes).
     this.mouth = { pos: gl.createBuffer(), uv: gl.createBuffer(), cap: 0, box: new Float32Array(0) };
     this.tex = texture(gl, [0, 0, 0, 0]);
@@ -240,10 +244,12 @@ export class Renderer {
     this.wireCount = lines.length;
   }
 
-  // Malla de la cara: {uv: Float32Array(n*2), indices: Uint16Array}. null la quita.
+  // Malla de la cara: {uv: Float32Array(n*2), indices: Uint16Array, inner?}. null la quita.
+  // `inner` = cuántos índices (al principio) tapan la capa del cuerpo; el resto es el borde exterior,
+  // que se funde con ella.
   setFaceMesh(mesh) {
     const gl = this.gl, f = this.face;
-    f.n = f.count = f.wireCount = 0;
+    f.n = f.count = f.wireCount = f.inner = 0;
     if (!mesh) return;
     const n = mesh.uv.length >> 1;
     let max = -1;
@@ -266,6 +272,8 @@ export class Renderer {
     f.n = n;
     f.count = count;
     f.wireCount = lines.length;
+    const inner = Math.min(count, mesh.inner ?? count);
+    f.inner = inner - (inner % 3);
   }
 
   resize(w, h) {
@@ -339,11 +347,21 @@ export class Renderer {
   }
 
   // Dibuja la cara con sus posiciones del fotograma (espacio posado, n*2 valores). Devuelve si se dibujó.
-  drawFace(positions) {
+  faceReady(positions) {
+    const f = this.face;
+    return !!(f.count && this.hasFaceTexture && positions && positions.length >= f.n * 2);
+  }
+
+  uploadFace(positions) {
     const gl = this.gl, f = this.face;
-    if (!f.count || !this.hasFaceTexture || !positions || positions.length < f.n * 2) return false;
     gl.bindBuffer(gl.ARRAY_BUFFER, f.pos);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions.length === f.n * 2 ? positions : positions.subarray(0, f.n * 2));
+  }
+
+  drawFace(positions) {
+    const gl = this.gl, f = this.face;
+    if (!this.faceReady(positions)) return false;
+    this.uploadFace(positions);
     this.usePlain(f.pos, f.uv, this.faceTex, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, f.el);
     gl.drawElements(gl.TRIANGLES, f.count, gl.UNSIGNED_SHORT, 0);
@@ -366,7 +384,8 @@ export class Renderer {
     gl.viewport(0, 0, W, H);
     if (bg) gl.clearColor(bg[0] * bg[3], bg[1] * bg[3], bg[2] * bg[3], bg[3]);
     else gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.clearStencil(0);
+    gl.clear(gl.COLOR_BUFFER_BIT | (this.hasStencil ? gl.STENCIL_BUFFER_BIT : 0));
     const s = view?.scale ?? 1, ox = view?.ox ?? 0, oy = view?.oy ?? 0;
     const skinned = this.count > 0 && !!bones;
 
@@ -375,6 +394,23 @@ export class Renderer {
     gl.uniform2f(p.res, W, H);
     gl.uniform2f(p.offset, ox, oy);
     gl.uniform1f(p.scale, s);
+    // Silueta interior de la cara en el stencil (sin color): ahí no se dibuja la capa del cuerpo,
+    // que tiene la cabeza quieta; si no, sus bordes semitransparentes asomarían bajo la cara animada.
+    const masked = skinned && this.hasStencil && this.face.inner > 0 && !!face && this.faceReady(face.positions);
+    if (masked) {
+      const f = this.face;
+      this.uploadFace(face.positions);
+      this.usePlain(f.pos, f.uv, this.faceTex, 3);
+      gl.colorMask(false, false, false, false);
+      gl.enable(gl.STENCIL_TEST);
+      gl.stencilFunc(gl.ALWAYS, 1, 0xff);
+      gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, f.el);
+      gl.drawElements(gl.TRIANGLES, f.inner, gl.UNSIGNED_SHORT, 0);
+      gl.colorMask(true, true, true, true);
+      gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
+      gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+    }
     if (skinned) {
       gl.useProgram(this.prog);
       gl.uniform4fv(l.bones, bones);
@@ -388,6 +424,7 @@ export class Renderer {
         gl.drawElements(gl.TRIANGLES, this.bodyCount, gl.UNSIGNED_SHORT, 0);
       }
     }
+    if (masked) gl.disable(gl.STENCIL_TEST);
     if (mouth?.positions) this.drawMouth(mouth);
     const faceDrawn = face ? this.drawFace(face.positions) : false;
     if (skinned && this.count > this.bodyCount) {
