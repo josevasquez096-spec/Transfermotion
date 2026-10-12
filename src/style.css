@@ -141,3 +141,31 @@ h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
   width: 2px; height: 2px;
   opacity: 0; pointer-events: none;
 }
+
+.badge {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 999px; padding: 2px 8px;
+}
+.lead { margin: 0 2px 10px; color: var(--muted); font-size: 14px; }
+.notice {
+  margin: 0 0 10px; padding: 10px 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--panel-2));
+  border: 1px solid color-mix(in srgb, var(--accent-2) 35%, transparent);
+  font-size: 13.5px; line-height: 1.5;
+}
+.notice code { background: var(--bg); padding: 1px 5px; border-radius: 5px; }
+.field input[type='password'] {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 14px; width: 150px;
+}
+.btn.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0d0f14;
+  border: none; font-weight: 700;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-status { margin: 8px 2px 0; font-size: 14px; color: var(--accent); min-height: 1.2em; }
+.ai-status.error { color: var(--accent-2); }
+.ai-result { margin-top: 12px; display: grid; gap: 10px; justify-items: start; }
+.ai-result[hidden] { display: none; }
+.ai-result video { max-width: 100%; max-height: 70vh; border-radius: 12px; background: #000; }

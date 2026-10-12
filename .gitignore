@@ -1,3 +1,6 @@
 node_modules/
 dist/
 public/mediapipe/
+.env
+.env.local
+.env.*.local

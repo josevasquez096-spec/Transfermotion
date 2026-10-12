@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/josevasquez096-spec/Transfermotion#readme",
   "dependencies": {
+    "@fal-ai/client": "^1.10.1",
     "@mediapipe/tasks-vision": "^1.1.0"
   },
   "devDependencies": {

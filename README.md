@@ -22,6 +22,31 @@ npm run build    # genera dist/ para publicar en cualquier hosting estático
 
 Necesita un navegador moderno con WebGL (Chrome, Edge, Firefox o Safari recientes). La primera vez descarga el modelo de pose de MediaPipe (~9 MB) desde Google.
 
+## IA avanzada (Wan 2.2 Animate en fal.ai)
+
+La animación del navegador mueve los píxeles de la foto: no puede inventar lo que no está (labios cerrados sobre una
+sonrisa, el otro lado de la cara…). Para un reemplazo realista, el panel **4 · IA avanzada** manda el video y la foto a
+[Wan 2.2 Animate](https://fal.ai/models/fal-ai/wan/v2.2-14b/animate/move) en fal.ai, que genera cada fotograma de nuevo:
+
+- **Mi foto hace lo del video**: tu foto con el movimiento, los gestos y la boca del video.
+- **Poner mi foto en el video**: la persona del video se sustituye por la de tu foto, con el fondo del video.
+
+Tarda unos minutos y fal.ai cobra por segundo de video (aprox. $0.04/s en 480p, $0.08/s en 720p; consulta su página).
+Usa fotos tuyas o de personas que estén de acuerdo.
+
+### Configuración (una sola vez)
+
+1. Crea una cuenta en [fal.ai](https://fal.ai), añade saldo y crea una clave en **Dashboard → Keys**.
+2. En Vercel: tu proyecto → **Settings → Environment Variables**, añade:
+   - `FAL_KEY`: la clave de fal.ai.
+   - `TM_PASSWORD`: una contraseña que tú elijas. La app la pide antes de generar, para que nadie más gaste tu saldo.
+3. Vuelve a publicar (**Deployments → Redeploy**). En la app, escribe la contraseña en el panel 4.
+
+La clave nunca llega al navegador: queda en la función `api/fal/proxy.js`, que solo deja pasar las llamadas a Wan 2.2
+Animate y la subida de archivos. Los videos se suben directamente a fal.ai (no pasan por Vercel).
+
+Para probarlo en local, crea `.env.local` con `FAL_KEY=...` y `TM_PASSWORD=...` y ejecuta `npm run dev`.
+
 ## Cómo funciona
 
 - **Detección de pose**: [MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) obtiene 33 puntos del cuerpo en cada fotograma del video y en la imagen del personaje, además de una máscara para recortar el fondo.
