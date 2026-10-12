@@ -68,6 +68,19 @@ function insideConvex(poly, x, y) {
   return true;
 }
 
+function blockVisible(data, w, h, x, y, st) {
+  for (let j = y; j < Math.min(h, y + st); j++) {
+    for (let i = x; i < Math.min(w, x + st); i++) if (data[(j * w + i) * 4 + 3] > 12) return true;
+  }
+  return false;
+}
+
+function fill(labels, w, h, x, y, st, v) {
+  for (let j = y; j < Math.min(h, y + st); j++) {
+    for (let i = x; i < Math.min(w, x + st); i++) labels[j * w + i] = v;
+  }
+}
+
 // Asigna cada píxel visible a una capa.
 function labelPixels(imageData, rest, scale) {
   const { width: w, height: h, data } = imageData;
@@ -76,28 +89,30 @@ function labelPixels(imageData, rest, scale) {
   const seg = [];
   for (let b = 1; b < N; b++) seg[b] = [rest[PARENT[b]], rest[b]];
   const d = new Float32Array(N);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  // En imágenes grandes se etiqueta 1 de cada 2×2 píxeles y se copia al bloque (4 veces más rápido).
+  const st = w * h > 700000 ? 2 : 1;
+  for (let y = 0; y < h; y += st) {
+    for (let x = 0; x < w; x += st) {
       const i = y * w + x;
-      if (data[i * 4 + 3] <= 12) continue;
+      if (data[i * 4 + 3] <= 12 && (st === 1 || !blockVisible(data, w, h, x, y, st))) continue;
       for (let b = 1; b < N; b++) d[b] = segDist(x, y, seg[b][0], seg[b][1]);
       // 1) Dentro del grosor de un brazo o pierna: es extremidad (los brazos tienen prioridad).
       let best = 0, bq = 1;
       for (const b of ARM_BONES) { const q = d[b] / (RADIUS[b] * scale); if (q < bq) { bq = q; best = b; } }
       if (!best) for (const b of LEG_BONES) { const q = d[b] / (RADIUS[b] * scale); if (q < bq) { bq = q; best = b; } }
-      if (best) { labels[i] = BONE_PART[best]; continue; }
+      if (best) { fill(labels, w, h, x, y, st, BONE_PART[best]); continue; }
       // 2) Cerca (pero fuera) del grosor estimado de una extremidad y fuera del torso:
       //    probablemente una manga ancha. Lo demás (pelo, torso, cabeza) es cuerpo.
       let nb = 1;
       for (let b = 2; b < N; b++) if (d[b] < d[nb]) nb = b;
       const limb = BONE_PART[nb] !== PART.body;
       if (limb && d[nb] < 1.8 * RADIUS[nb] * scale && !insideConvex(torso, x, y)) {
-        labels[i] = BONE_PART[nb];
+        fill(labels, w, h, x, y, st, BONE_PART[nb]);
         continue;
       }
       let bb = 1;
       for (let b = 2; b < N; b++) if (BONE_PART[b] === PART.body && d[b] < d[bb]) bb = b;
-      labels[i] = BONE_PART[bb];
+      fill(labels, w, h, x, y, st, BONE_PART[bb]);
     }
   }
   return labels;
@@ -166,13 +181,39 @@ function buildAtlas(imageData, labels, rest) {
     if (!hole[i]) continue;
     body[i * 4] = rgb[i * 3]; body[i * 4 + 1] = rgb[i * 3 + 1]; body[i * 4 + 2] = rgb[i * 3 + 2]; body[i * 4 + 3] = 255;
   }
+  // Textura de la cara: la imagen original sin las extremidades (una mano en la mejilla se
+  // rellena con los colores de alrededor; si no, quedaría pintada en la cabeza al moverse).
+  const faceImg = new Uint8ClampedArray(data);
+  for (let i = 0; i < n; i++) {
+    if (labels[i] <= PART.body) continue;
+    faceImg[i * 4] = rgb[i * 3]; faceImg[i * 4 + 1] = rgb[i * 3 + 1]; faceImg[i * 4 + 2] = rgb[i * 3 + 2];
+  }
+  const face = document.createElement('canvas');
+  face.width = w;
+  face.height = h;
+  face.getContext('2d').putImageData(new ImageData(faceImg, w, h), 0, 0);
   const atlas = document.createElement('canvas');
   atlas.width = w * 2;
   atlas.height = h;
   const g = atlas.getContext('2d');
   g.putImageData(new ImageData(body, w, h), 0, 0);
   g.putImageData(new ImageData(limbs, w, h), w, 0);
-  return { atlas, bodyAlpha: body };
+  return { atlas, bodyAlpha: body, face };
+}
+
+// Los 4 huesos (de `bones`) con más influencia sobre el punto (x, y), con pesos normalizados.
+// La usan las mallas de las capas y el borde de la malla de la cara, para que coincidan.
+export const BODY_BONES = PART_BONES[PART.body];
+export function skinWeights(rest, scale, x, y, bones = BODY_BONES) {
+  const ws = bones
+    .map((bone) => {
+      const r = segDist(x, y, rest[PARENT[bone]], rest[bone]) / scale;
+      return [bone, 1 / Math.pow(r * r + 0.003, 2)];
+    })
+    .sort((p, q) => q[1] - p[1])
+    .slice(0, 4);
+  const sum = ws.reduce((acc, [, wt]) => acc + wt, 0);
+  return ws.map(([b, wt]) => [b, wt / sum]);
 }
 
 // Construye las mallas (una por capa, sin vértices compartidos) con pesos de skinning.
@@ -180,7 +221,7 @@ export function buildRig(imageData, rest) {
   const { width: w, height: h } = imageData;
   const scale = dist(rest[J.pelvis], rest[J.chest]) || h / 3;
   const labels = labelPixels(imageData, rest, scale);
-  const { atlas, bodyAlpha } = buildAtlas(imageData, labels, rest);
+  const { atlas, bodyAlpha, face } = buildAtlas(imageData, labels, rest);
 
   const cell = Math.max(3, Math.ceil(Math.max(w, h) / 100));
   const cols = Math.ceil(w / cell), rows = Math.ceil(h / cell);
@@ -212,6 +253,7 @@ export function buildRig(imageData, rest) {
   });
 
   const pos = [], uv = [], idx = [], wts = [], indices = [];
+  let bodyCount = 0;
   for (const part of DRAW_ORDER) {
     const bones = PART_BONES[part];
     const uOff = part === PART.body ? 0 : 0.5;
@@ -223,18 +265,10 @@ export function buildRig(imageData, rest) {
       const id = pos.length / 2;
       pos.push(x, y);
       uv.push(uOff + x / w / 2, y / h);
-      // Los 4 huesos de la capa con más influencia sobre el vértice.
-      const ws = bones
-        .map((bone) => {
-          const r = segDist(x, y, rest[PARENT[bone]], rest[bone]) / scale;
-          return [bone, 1 / Math.pow(r * r + 0.003, 2)];
-        })
-        .sort((p, q) => q[1] - p[1])
-        .slice(0, 4);
-      const sum = ws.reduce((acc, [, wt]) => acc + wt, 0);
+      const ws = skinWeights(rest, scale, x, y, bones);
       for (let k = 0; k < 4; k++) {
         idx.push(ws[k]?.[0] ?? 0);
-        wts.push(ws[k] ? ws[k][1] / sum : 0);
+        wts.push(ws[k]?.[1] ?? 0);
       }
       vmap.set(key, id);
       return id;
@@ -247,14 +281,17 @@ export function buildRig(imageData, rest) {
         indices.push(a, b, c, b, e, c);
       }
     }
+    if (part === PART.body) bodyCount = indices.length;
   }
   if (pos.length / 2 > 65535) throw new Error('La malla es demasiado grande.');
   return {
     atlas,
+    face,
     mesh: {
       pos: new Float32Array(pos), uv: new Float32Array(uv),
       idx: new Float32Array(idx), wts: new Float32Array(wts),
       indices: new Uint16Array(indices),
+      bodyCount,
     },
   };
 }

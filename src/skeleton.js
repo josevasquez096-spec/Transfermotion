@@ -30,10 +30,13 @@ const MIRROR_SWAP = {
 
 // Convierte landmarks normalizados de MediaPipe a articulaciones en píxeles.
 // Con `mirror` se refleja horizontalmente y se intercambian lados (vista tipo espejo).
+// Los puntos fuera del encuadre (planos cercanos) se marcan como no visibles.
 export function fromLandmarks(lm, w, h, mirror = false) {
   const pt = (i) => {
     const p = lm[mirror ? (MIRROR_SWAP[i] ?? i) : i];
-    return { x: (mirror ? 1 - p.x : p.x) * w, y: p.y * h, v: p.visibility ?? 1 };
+    const x = mirror ? 1 - p.x : p.x;
+    const inside = x > -0.02 && x < 1.02 && p.y > -0.02 && p.y < 1.02;
+    return { x: x * w, y: p.y * h, v: inside ? (p.visibility ?? 1) : 0 };
   };
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, v: Math.min(a.v, b.v) });
   const out = new Array(N);
@@ -59,7 +62,8 @@ export function restInfo(rest) {
 
 // Retargeting: toma la dirección de cada hueso del video fuente y la aplica
 // con las longitudes de hueso del personaje, conservando sus proporciones.
-export function retarget(rest, info, src, root) {
+// `angles` permite fijar el ángulo absoluto de algunos huesos (p. ej. la cabeza según la cara).
+export function retarget(rest, info, src, root, angles = null) {
   const out = new Array(N);
   const delta = new Float32Array(N);
   out[0] = root;
@@ -74,7 +78,9 @@ export function retarget(rest, info, src, root) {
     const dx = src[i].x - src[p].x;
     const dy = src[i].y - src[p].y;
     let a;
-    if (girdle[i]) {
+    if (angles && angles[i] !== undefined) {
+      a = angles[i];
+    } else if (girdle[i]) {
       // Hombros y caderas: siguen la columna y se inclinan con la línea de hombros/caderas
       // solo en la medida en que esa línea sea fiable (si la persona gira, se acorta).
       const spine = delta[J.chest];

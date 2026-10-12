@@ -120,6 +120,11 @@ h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .check input { accent-color: var(--accent); }
 .field input[type='color'] { width: 34px; height: 24px; border: none; background: none; padding: 0; }
 .field input[type='range'] { accent-color: var(--accent); width: 120px; }
+.field select {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 8px; font: inherit; font-size: 14px;
+}
 .hint { margin: 8px 2px 0; color: var(--muted); font-size: 12.5px; }
 
 .foot { color: var(--muted); font-size: 12.5px; text-align: center; padding: 0 24px 28px; }
