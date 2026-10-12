@@ -6,6 +6,7 @@ import { getVideoLandmarker, getImageLandmarker, getFaceVideoLandmarker, getFace
 import { buildFaceRig, FaceDriver } from './face.js';
 import { OneEuro, CutDetector } from './filters.js';
 import { FramingCamera, fitView } from './camera.js';
+import { generate, serverStatus, explainError, PRICE_PER_SECOND } from './genai.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -29,6 +30,17 @@ const el = {
   followRoot: $('followRoot'),
   framing: $('framing'),
   animateFace: $('animateFace'),
+  aiSetup: $('aiSetup'),
+  aiMode: $('aiMode'),
+  aiRes: $('aiRes'),
+  aiPassword: $('aiPassword'),
+  aiBtn: $('aiBtn'),
+  aiCancel: $('aiCancel'),
+  aiInfo: $('aiInfo'),
+  aiStatus: $('aiStatus'),
+  aiResult: $('aiResult'),
+  aiVideo: $('aiVideo'),
+  aiDownload: $('aiDownload'),
   transparent: $('transparent'),
   bgColor: $('bgColor'),
   smoothing: $('smoothing'),
@@ -291,6 +303,8 @@ function loadImage(url) {
 }
 
 async function loadCharacter(file) {
+  state.imageFile = file;
+  updateAiInfo();
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
@@ -488,6 +502,9 @@ async function startVideo(file) {
     resetSource('video');
     state.mirror = false;
     setSourceSize(el.video.videoWidth, el.video.videoHeight);
+    state.videoFile = file;
+    state.videoDuration = el.video.duration;
+    updateAiInfo();
     if (state.playing && !(await playVideo())) return;
     setStatus('Video cargado ✓ — transfiriendo movimiento');
   } catch (err) {
@@ -830,6 +847,91 @@ function toggleRecording() {
   setStatus('Grabando…', 'busy');
 }
 
+// ---------- IA avanzada (servidor) ----------
+
+const ai = { status: null, busy: false, abort: null };
+const storageGet = (k) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } };
+const storageSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
+
+function aiCost() {
+  const secs = state.videoFile && Number.isFinite(state.videoDuration) ? state.videoDuration : null;
+  return secs ? { secs, usd: secs * PRICE_PER_SECOND[el.aiRes.value] } : null;
+}
+
+function updateAiInfo() {
+  const missing = [!state.videoFile && 'sube un video (paso 1)', !state.imageFile && 'sube una foto (paso 2)'].filter(Boolean);
+  const cost = aiCost();
+  if (missing.length) el.aiInfo.textContent = `Para usarla: ${missing.join(' y ')}.`;
+  else if (cost) el.aiInfo.textContent = `Video de ${cost.secs.toFixed(1)} s · costo aproximado: $${cost.usd.toFixed(2)} USD (${el.aiRes.value}).`
+    + (cost.secs > 15 ? ' Consejo: recorta el video en tu galería para pagar menos.' : '');
+  else el.aiInfo.textContent = '';
+  el.aiBtn.disabled = ai.busy || missing.length > 0 || !ai.status?.configured;
+}
+
+async function checkAiServer() {
+  ai.status = await serverStatus();
+  if (!ai.status.available) {
+    el.aiSetup.hidden = false;
+    el.aiSetup.innerHTML = 'Esta función necesita el servidor de la app (la versión publicada en Vercel). '
+      + 'En una copia estática no está disponible.';
+  } else if (!ai.status.configured) {
+    el.aiSetup.hidden = false;
+    el.aiSetup.innerHTML = 'Falta configurar el servidor: en Vercel → tu proyecto → Settings → Environment Variables, añade '
+      + '<code>FAL_KEY</code> (tu clave de fal.ai) y <code>TM_PASSWORD</code> (una contraseña que tú elijas), y vuelve a publicar. '
+      + `Faltan: ${ai.status.missing.map((m) => `<code>${m}</code>`).join(', ')}.`;
+  } else {
+    el.aiSetup.hidden = true;
+  }
+  updateAiInfo();
+}
+
+function aiSetStatus(text, error = false) {
+  el.aiStatus.textContent = text;
+  el.aiStatus.classList.toggle('error', error);
+}
+
+async function runAi() {
+  const cost = aiCost();
+  const price = cost ? `unos $${cost.usd.toFixed(2)} USD` : 'un importe según la duración del video';
+  if (!el.aiPassword.value) {
+    aiSetStatus('Escribe la contraseña de la app (TM_PASSWORD).', true);
+    el.aiPassword.focus();
+    return;
+  }
+  if (!window.confirm(`Se generará el video con IA en fal.ai y se cobrará ${price} a tu cuenta. ¿Continuar?`)) return;
+  storageSet('tm-ai-password', el.aiPassword.value);
+  ai.busy = true;
+  ai.abort = new AbortController();
+  el.aiCancel.hidden = false;
+  el.aiResult.hidden = true;
+  updateAiInfo();
+  try {
+    const { url } = await generate({
+      mode: el.aiMode.value,
+      video: state.videoFile,
+      image: state.imageFile,
+      password: el.aiPassword.value,
+      resolution: el.aiRes.value,
+      signal: ai.abort.signal,
+      onStatus: (t) => aiSetStatus(t),
+    });
+    el.aiVideo.src = url;
+    el.aiDownload.href = url;
+    el.aiResult.hidden = false;
+    aiSetStatus('¡Listo! ✓ Si no se descarga con el botón, mantén pulsado el video y guárdalo.');
+    el.aiResult.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (err) {
+    console.error(err);
+    if (err?.name === 'AbortError') aiSetStatus('Cancelado.', true);
+    else aiSetStatus(`No se pudo generar: ${explainError(err)}`, true);
+  } finally {
+    ai.busy = false;
+    ai.abort = null;
+    el.aiCancel.hidden = true;
+    updateAiInfo();
+  }
+}
+
 // ---------- Eventos ----------
 
 el.videoInput.addEventListener('change', () => {
@@ -869,6 +971,10 @@ el.playBtn.addEventListener('click', () => {
   }
 });
 el.recBtn.addEventListener('click', toggleRecording);
+el.aiBtn.addEventListener('click', runAi);
+el.aiCancel.addEventListener('click', () => ai.abort?.abort());
+el.aiRes.addEventListener('change', updateAiInfo);
+el.aiPassword.value = storageGet('tm-ai-password');
 el.srcCanvas.addEventListener('click', () => {
   if (!state.needsTap || state.source === 'demo') return;
   state.playing = true;
@@ -882,6 +988,7 @@ setTarget(DEMO.canvas, DEMO.rest, null);
 startDemo();
 setStatus('Listo — sube un video y una imagen, o prueba la demo');
 requestAnimationFrame(frame);
+checkAiServer();
 
 // Depuración: ?debug expone el estado en la consola.
 if (new URLSearchParams(location.search).has('debug')) window.__tm = { state, el, bones };

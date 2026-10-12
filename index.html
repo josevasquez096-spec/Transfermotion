@@ -78,6 +78,40 @@
           <button id="recalBtn" class="btn ghost small">Recalibrar posición</button>
         </div>
       </section>
+      <section class="panel wide" id="aiPanel">
+        <div class="panel-head">
+          <h2><span class="step">4</span> IA avanzada <span class="badge">Wan 2.2 Animate</span></h2>
+        </div>
+        <p class="lead">
+          Para un reemplazo realista (cara, boca y cuerpo creados de nuevo en cada fotograma) se usa una IA generativa en
+          servidores con GPU. Tarda unos minutos y cuesta dinero por cada video (lo cobra fal.ai a tu cuenta).
+        </p>
+        <div id="aiSetup" class="notice" hidden></div>
+        <div class="controls ai-controls">
+          <label class="field">Modo
+            <select id="aiMode">
+              <option value="move" selected>Mi foto hace lo del video</option>
+              <option value="replace">Poner mi foto en el video</option>
+            </select>
+          </label>
+          <label class="field">Calidad
+            <select id="aiRes">
+              <option value="480p" selected>480p (más barato)</option>
+              <option value="580p">580p</option>
+              <option value="720p">720p</option>
+            </select>
+          </label>
+          <label class="field">Contraseña <input id="aiPassword" type="password" autocomplete="current-password" /></label>
+          <button id="aiBtn" class="btn primary">✨ Generar con IA</button>
+          <button id="aiCancel" class="btn ghost small" hidden>Cancelar</button>
+        </div>
+        <p id="aiInfo" class="hint"></p>
+        <p id="aiStatus" class="ai-status" role="status"></p>
+        <div id="aiResult" class="ai-result" hidden>
+          <video id="aiVideo" controls playsinline loop></video>
+          <a id="aiDownload" class="btn" download="transfer-motion-ia.mp4">⬇ Descargar video</a>
+        </div>
+      </section>
     </main>
 
     <footer class="foot">
