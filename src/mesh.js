@@ -82,13 +82,17 @@ function fill(labels, w, h, x, y, st, v) {
 }
 
 // Asigna cada píxel visible a una capa.
-function labelPixels(imageData, rest, scale) {
+// faceOval (opcional): zona de la cabeza; ahí todo es cuerpo (la cara se anima aparte). Así un brazo
+// detrás de la cabeza o una mano en la mejilla no arrastran trozos de cara o pelo al moverse.
+function labelPixels(imageData, rest, scale, faceOval = null) {
   const { width: w, height: h, data } = imageData;
   const labels = new Uint8Array(w * h);
   const torso = torsoShape(rest);
   const seg = [];
   for (let b = 1; b < N; b++) seg[b] = [rest[PARENT[b]], rest[b]];
   const d = new Float32Array(N);
+  let fx0 = Infinity, fy0 = Infinity, fx1 = -Infinity, fy1 = -Infinity;
+  if (faceOval) for (const p of faceOval) { fx0 = Math.min(fx0, p.x); fx1 = Math.max(fx1, p.x); fy0 = Math.min(fy0, p.y); fy1 = Math.max(fy1, p.y); }
   // En imágenes grandes se etiqueta 1 de cada 2×2 píxeles y se copia al bloque (4 veces más rápido).
   const st = w * h > 700000 ? 2 : 1;
   for (let y = 0; y < h; y += st) {
@@ -96,6 +100,9 @@ function labelPixels(imageData, rest, scale) {
       const i = y * w + x;
       if (data[i * 4 + 3] <= 12 && (st === 1 || !blockVisible(data, w, h, x, y, st))) continue;
       for (let b = 1; b < N; b++) d[b] = segDist(x, y, seg[b][0], seg[b][1]);
+      if (x >= fx0 && x <= fx1 && y >= fy0 && y <= fy1 && insideConvex(faceOval, x, y)) {
+        for (let b = 1; b < N; b++) if (BONE_PART[b] !== PART.body) d[b] = Infinity;
+      }
       // 1) Dentro del grosor de un brazo o pierna: es extremidad (los brazos tienen prioridad).
       let best = 0, bq = 1;
       for (const b of ARM_BONES) { const q = d[b] / (RADIUS[b] * scale); if (q < bq) { bq = q; best = b; } }
@@ -145,8 +152,16 @@ function fillHoles(rgb, known, w, h) {
       for (let x = 0; x < L.w; x++) {
         const s = y * L.w + x, k = L.wt[s];
         if (k >= 1) continue;
-        const t = (y >> 1) * C.w + (x >> 1);
-        for (let ch = 0; ch < 3; ch++) L.rgb[s * 3 + ch] = L.rgb[s * 3 + ch] * k + C.rgb[t * 3 + ch] * (1 - k);
+        // Interpolación bilineal del nivel grueso (con el vecino más cercano quedarían bloques).
+        const fx = Math.min(C.w - 1, Math.max(0, (x + 0.5) / 2 - 0.5)), fy = Math.min(C.h - 1, Math.max(0, (y + 0.5) / 2 - 0.5));
+        const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(C.w - 1, x0 + 1), y1 = Math.min(C.h - 1, y0 + 1);
+        const ax = fx - x0, ay = fy - y0;
+        const i00 = (y0 * C.w + x0) * 3, i10 = (y0 * C.w + x1) * 3, i01 = (y1 * C.w + x0) * 3, i11 = (y1 * C.w + x1) * 3;
+        for (let ch = 0; ch < 3; ch++) {
+          const top = C.rgb[i00 + ch] * (1 - ax) + C.rgb[i10 + ch] * ax;
+          const bot = C.rgb[i01 + ch] * (1 - ax) + C.rgb[i11 + ch] * ax;
+          L.rgb[s * 3 + ch] = L.rgb[s * 3 + ch] * k + (top * (1 - ay) + bot * ay) * (1 - k);
+        }
         L.wt[s] = 1;
       }
     }
@@ -181,8 +196,9 @@ function buildAtlas(imageData, labels, rest) {
     if (!hole[i]) continue;
     body[i * 4] = rgb[i * 3]; body[i * 4 + 1] = rgb[i * 3 + 1]; body[i * 4 + 2] = rgb[i * 3 + 2]; body[i * 4 + 3] = 255;
   }
-  // Textura de la cara: la imagen original sin las extremidades (una mano en la mejilla se
-  // rellena con los colores de alrededor; si no, quedaría pintada en la cabeza al moverse).
+  // Textura de la cara: la imagen original, con las extremidades (fuera de la zona de la cabeza,
+  // que nunca las tiene) rellenadas con los colores de alrededor; si no, una mano junto al pelo
+  // quedaría pintada en la cabeza al moverse.
   const faceImg = new Uint8ClampedArray(data);
   for (let i = 0; i < n; i++) {
     if (labels[i] <= PART.body) continue;
@@ -217,10 +233,11 @@ export function skinWeights(rest, scale, x, y, bones = BODY_BONES) {
 }
 
 // Construye las mallas (una por capa, sin vértices compartidos) con pesos de skinning.
-export function buildRig(imageData, rest) {
+// faceOval (opcional): zona de la cabeza del personaje [{x, y}] (polígono convexo, px de la imagen).
+export function buildRig(imageData, rest, faceOval = null) {
   const { width: w, height: h } = imageData;
   const scale = dist(rest[J.pelvis], rest[J.chest]) || h / 3;
-  const labels = labelPixels(imageData, rest, scale);
+  const labels = labelPixels(imageData, rest, scale, faceOval);
   const { atlas, bodyAlpha, face } = buildAtlas(imageData, labels, rest);
 
   const cell = Math.max(3, Math.ceil(Math.max(w, h) / 100));

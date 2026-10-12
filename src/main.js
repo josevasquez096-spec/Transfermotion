@@ -70,6 +70,8 @@ const FACE_DOTS = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 39
 // encuadrar primeros planos aunque el personaje no tenga malla facial.
 const POSE_FACE = [0, 2, 5, 7, 8, 9, 10];
 const LOST_LIMIT = 6;
+const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176,
+  149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 const state = {
@@ -201,7 +203,15 @@ function rebuildTexture() {
 function rebuildMesh() {
   const t = state.target;
   t.info = restInfo(t.rest);
-  const rig = buildRig(t.imageData, t.rest);
+  // Zona de la cabeza (contorno de la cara ampliado, como el primer anillo de la malla facial):
+  // ahí no hay brazos ni piernas, la anima la capa de la cara.
+  let head = null;
+  if (t.faceLm) {
+    const pts = OVAL.map((i) => t.faceLm[i]);
+    const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    head = pts.map((p) => ({ x: cx + (p.x - cx) * 1.25, y: cy + (p.y - cy) * 1.25 }));
+  }
+  const rig = buildRig(t.imageData, t.rest, head);
   renderer.setTexture(rig.atlas);
   renderer.setFaceTexture(rig.face);
   renderer.setMesh(rig.mesh);
