@@ -17,4 +17,6 @@ function falProxy(env) {
 
 export default defineConfig(({ mode }) => ({
   plugins: [falProxy(loadEnv(mode, process.cwd(), ''))],
+  // Dos páginas: el video (index.html) y el estudio de voz y música (studio.html).
+  build: { rollupOptions: { input: { main: 'index.html', studio: 'studio.html' } } },
 }));

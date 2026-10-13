@@ -47,6 +47,27 @@ Animate y la subida de archivos. Los videos se suben directamente a fal.ai (no p
 
 Para probarlo en local, crea `.env.local` con `FAL_KEY=...` y `TM_PASSWORD=...` y ejecuta `npm run dev`.
 
+## Estudio de voz y música (`studio.html`)
+
+Desde la pestaña **🎤 Voz y música** (usa la misma configuración de fal.ai que la IA avanzada de video):
+
+1. **Tu voz**: graba 10–30 s leyendo la frase de consentimiento (o sube un audio, marcando que es tu voz o que
+   tienes permiso). Se guarda solo en tu dispositivo.
+2. **Hablar con tu voz**: escribe un texto y se lee con tu voz (Chatterbox multilingüe, 23 idiomas).
+   ≈ $0.025 por cada 1000 caracteres.
+3. **Cover con tu voz**: sube una canción; Demucs separa la voz de la música (≈ $0.0007/s), Chatterbox HD cambia la voz
+   por la tuya en fragmentos cortados en los silencios, y la mezcla final se hace en el navegador (puedes ajustar el
+   volumen de la voz sin volver a pagar). Opción «Solo separar» para karaoke. Experimental: el modelo de voz está pensado
+   para el habla y en notas muy sostenidas puede perder la melodía.
+4. **Crear una canción**: elige estilo (reguetón, bachata, corridos, rock, lo-fi…), ánimo y voz, y:
+   - **Con mi letra**: MiniMax Music 2 (≈ $0.03 por canción).
+   - **La IA escribe la letra**: Sonauto v2.
+   - **Instrumental**: ACE-Step (≈ $0.012 por minuto).
+   Con **«Cantarla con mi voz»** la canción creada pasa directamente al cover con tu voz.
+
+Precios aproximados según fal.ai y terceros; el real lo marca fal.ai. Usa solo tu voz o la de personas que te hayan dado
+permiso, y respeta los derechos de autor de las canciones que versiones.
+
 ## Cómo funciona
 
 - **Detección de pose**: [MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) obtiene 33 puntos del cuerpo en cada fotograma del video y en la imagen del personaje, además de una máscara para recortar el fondo.

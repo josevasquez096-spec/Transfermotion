@@ -1,5 +1,5 @@
 // Proxy hacia fal.ai para la "IA avanzada": guarda la clave (FAL_KEY) en el servidor y solo deja
-// pasar las llamadas que usa la app (Wan 2.2 Animate y la subida de archivos).
+// pasar las llamadas que usa la app (los modelos de ENDPOINTS y la subida de archivos).
 // El video no pasa por aquí: el navegador lo sube directamente a la URL firmada que devuelve fal.
 //
 // Variables de entorno:
@@ -10,13 +10,30 @@ import { timingSafeEqual } from 'node:crypto';
 export const TARGET_HEADER = 'x-fal-target-url';
 export const PASSWORD_HEADER = 'x-tm-password';
 
+// Modelos que la app puede usar. Nada más pasa por el proxy.
+export const ENDPOINTS = [
+  'fal-ai/wan/v2.2-14b/animate/move', // video: tu foto hace lo del video
+  'fal-ai/wan/v2.2-14b/animate/replace', // video: tu foto dentro del video
+  'fal-ai/demucs', // separar voz e instrumentos
+  'resemble-ai/chatterboxhd/speech-to-speech', // cambiar una voz por la tuya
+  'fal-ai/chatterbox/text-to-speech/multilingual', // hablar con tu voz
+  'fal-ai/minimax-music/v2', // canción con tu letra
+  'sonauto/v2/text-to-music', // canción con letra escrita por la IA
+  'fal-ai/ace-step', // instrumental
+];
+
+const esc = (t) => t.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+// La cola agrupa los trabajos por "dueño/app" (las dos primeras partes del id del modelo).
+const APPS = [...new Set(ENDPOINTS.map((e) => e.split('/').slice(0, 2).join('/')))];
+const Q = 'https:\\/\\/queue\\.fal\\.run\\/';
+const ID = '[A-Za-z0-9-]+';
 const ALLOWED = [
   // Enviar un trabajo a la cola
-  { method: 'POST', url: /^https:\/\/queue\.fal\.run\/fal-ai\/wan\/v2\.2-14b\/animate\/(move|replace)$/ },
+  { method: 'POST', url: new RegExp(`^${Q}(${ENDPOINTS.map(esc).join('|')})$`) },
   // Estado y resultado del trabajo
-  { method: 'GET', url: /^https:\/\/queue\.fal\.run\/fal-ai\/wan\/requests\/[A-Za-z0-9-]+(\/status)?(\?logs=[01])?$/ },
+  { method: 'GET', url: new RegExp(`^${Q}(${APPS.map(esc).join('|')})\\/requests\\/${ID}(\\/status)?(\\?logs=[01])?$`) },
   // Cancelar
-  { method: 'PUT', url: /^https:\/\/queue\.fal\.run\/fal-ai\/wan\/requests\/[A-Za-z0-9-]+\/cancel$/ },
+  { method: 'PUT', url: new RegExp(`^${Q}(${APPS.map(esc).join('|')})\\/requests\\/${ID}\\/cancel$`) },
   // Pedir una URL firmada para subir un archivo (la subida en sí va directa del navegador a fal).
   // Los archivos de más de 90 MB se suben por partes (initiate-multipart).
   { method: 'POST', url: /^https:\/\/rest\.fal\.ai\/storage\/upload\/initiate(-multipart)?\?storage_type=fal-cdn-v3$/ },
