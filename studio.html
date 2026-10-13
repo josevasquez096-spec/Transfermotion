@@ -29,7 +29,7 @@
         <div id="setup" class="notice" hidden></div>
         <div class="controls">
           <label class="field">Contraseña de la app <input id="password" type="password" autocomplete="current-password" /></label>
-          <span class="hint">Todo se genera en fal.ai y se cobra a tu cuenta; antes de cada uso verás el costo aproximado.</span>
+          <span class="hint">Todo se genera en fal.ai y se cobra a tu cuenta; antes de cada uso te pediremos confirmación, con el costo aproximado cuando lo conocemos.</span>
         </div>
       </section>
 
@@ -50,6 +50,7 @@
           <span class="meter"><span id="recLevel"></span></span>
           <label class="btn ghost">Subir audio<input id="voiceInput" type="file" accept="audio/*,video/*" hidden /></label>
           <label class="check"><input id="voiceConsent" type="checkbox" /> Es mi voz o tengo permiso de la persona</label>
+          <button id="voiceForget" class="btn ghost small" hidden>Borrar mi voz</button>
         </div>
         <audio id="voicePlayer" controls hidden></audio>
         <p id="voiceStatus" class="ai-status" role="status"></p>
@@ -72,6 +73,7 @@
           </label>
           <label class="field">Expresividad <input id="ttsExpr" type="range" min="0.25" max="1.2" step="0.05" value="0.5" /></label>
           <button id="ttsBtn" class="btn primary">🗣️ Generar</button>
+          <button id="ttsCancel" class="btn ghost small" hidden>Cancelar</button>
         </div>
         <p id="ttsInfo" class="hint"></p>
         <p id="ttsStatus" class="ai-status" role="status"></p>
@@ -149,13 +151,15 @@ Y vuelve, vuelve la luz
 cuando cantamos juntos tú y yo"></textarea>
         <div class="controls">
           <button id="musicBtn" class="btn primary">🎵 Crear canción</button>
+          <button id="musicCancel" class="btn ghost small" hidden>Cancelar</button>
+          <button id="musicResume" class="btn ghost small" hidden>Recuperar la canción pendiente</button>
           <span id="musicInfo" class="hint"></span>
         </div>
         <p id="musicStatus" class="ai-status" role="status"></p>
         <div id="musicResult" class="result" hidden>
           <audio controls></audio>
           <div class="btns">
-            <a class="btn" download="cancion.mp3">⬇ Descargar</a>
+            <a class="btn" download="cancion.mp3" target="_blank" rel="noopener">⬇ Descargar</a>
             <button id="singWithMe" class="btn primary">🎤 Cantarla con mi voz</button>
           </div>
           <pre id="musicLyrics" class="lyrics" hidden></pre>

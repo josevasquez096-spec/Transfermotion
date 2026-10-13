@@ -8,10 +8,24 @@ export async function decode(arrayBuffer) {
   return ctx.decodeAudioData(arrayBuffer);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Descarga y decodifica un audio, reintentando los cortes de red (p. ej. al bloquear el iPhone).
 export async function fetchAudio(url, { signal } = {}) {
-  const r = await fetch(url, { signal });
-  if (!r.ok) throw new Error(`No se pudo descargar el audio (${r.status}).`);
-  return decode(await r.arrayBuffer());
+  let bytes;
+  for (let i = 0; ; i++) {
+    if (signal?.aborted) throw new DOMException('Cancelado', 'AbortError');
+    try {
+      const r = await fetch(url, { signal });
+      if (!r.ok) throw Object.assign(new Error(`No se pudo descargar el audio (${r.status}).`), { status: r.status });
+      bytes = await r.arrayBuffer();
+      break;
+    } catch (e) {
+      if (e?.name === 'AbortError' || e?.status || i >= 4) throw e;
+      await sleep(1500 * (i + 1));
+    }
+  }
+  return decode(bytes);
 }
 
 export const blobToAudio = async (blob) => decode(await blob.arrayBuffer());

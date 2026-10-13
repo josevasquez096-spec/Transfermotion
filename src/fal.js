@@ -62,12 +62,19 @@ export const jobStore = {
   clear(key) { try { localStorage.removeItem(key); } catch { /* sin almacenamiento */ } },
 };
 
+// Promesa que falla al cancelar (para no esperar a que termine una subida larga).
+const onAbort = (signal) => new Promise((_, rej) => {
+  if (signal?.aborted) rej(aborted());
+  signal?.addEventListener('abort', () => rej(aborted()), { once: true });
+});
+
 // Sube un archivo/Blob a fal y devuelve su URL. Reintenta los cortes de red.
 export async function upload(fal, blob, { signal } = {}) {
   for (let i = 0; ; i++) {
     if (signal?.aborted) throw aborted();
     try {
-      return await fal.storage.upload(blob);
+      const up = fal.storage.upload(blob);
+      return await (signal ? Promise.race([up, onAbort(signal)]) : up);
     } catch (e) {
       if (!isTransient(e) || i >= 3) throw e;
       await sleep(1500 * (i + 1));
@@ -123,7 +130,17 @@ export async function finishJob(fal, job, { signal, onStatus, label, storeKey } 
 // storeKey (opcional): guarda el trabajo en localStorage para poder recuperarlo con resumeJob.
 export async function runJob(fal, endpoint, input, { signal, onStatus = () => {}, label, storeKey, poll } = {}) {
   if (signal?.aborted) throw aborted();
-  const { request_id: requestId } = await fal.queue.submit(endpoint, { input });
+  // Un corte de red al enviar (sin respuesta del servidor) se reintenta un par de veces.
+  let requestId;
+  for (let i = 0; ; i++) {
+    try {
+      ({ request_id: requestId } = await fal.queue.submit(endpoint, { input }));
+      break;
+    } catch (e) {
+      if (!isTransient(e) || i >= 2 || signal?.aborted) throw e;
+      await sleep(2000 * (i + 1));
+    }
+  }
   const job = { endpoint, requestId, startedAt: Date.now(), poll };
   if (storeKey) jobStore.set(storeKey, job);
   if (signal?.aborted) {

@@ -1,4 +1,4 @@
-import { falClient, upload, runJob, serverStatus, explainError, findUrl, aborted } from '../fal.js';
+import { falClient, upload, runJob, resumeJob, jobStore, serverStatus, explainError, findUrl, aborted } from '../fal.js';
 import { fetchAudio, blobToAudio, mix, toMono, encodeWav, bufferToWav, findSegments, slice, placeSegments, concat, recordMic } from './audio.js';
 
 // Estudio de voz y música:
@@ -18,6 +18,8 @@ const M = {
 };
 // Precios aproximados (publicados en fal.ai o por terceros); el real lo marca fal.ai.
 const PRICE = { ttsChar: 0.025 / 1000, demucsSec: 0.0007, minimax: 0.03, aceSec: 0.0002 };
+const MUSIC_JOB = 'tm-studio-music';
+const AUDIO_EXT = ['mp3', 'wav', 'flac', 'ogg', 'm4a'];
 
 const STYLES = [
   ['Pop', 'pop, catchy, modern production'],
@@ -45,8 +47,8 @@ const STYLES = [
 const state = {
   server: null,
   voice: null, // { wav: Blob, url?: string (fal) }
-  song: null, // { file: Blob, name, duration }
-  cover: null, // { inst, vocals (AudioBuffer) }
+  song: null, // { file, name, duration, url?, sep? } — sep guarda la separación ya pagada
+  cover: null, // resultado publicado: { inst, vocals, url }
   style: 0,
   music: null,
   busy: false,
@@ -77,10 +79,12 @@ const idb = {
       const req = fn(tx.objectStore('kv'));
       tx.oncomplete = () => res(req?.result);
       tx.onerror = () => rej(tx.error);
+      tx.onabort = () => rej(tx.error);
     });
   },
   get: (k) => idb.run('readonly', (s) => s.get(k)).catch(() => null),
-  set: (k, v) => idb.run('readwrite', (s) => s.put(v, k)).catch(() => null),
+  set: (k, v) => idb.run('readwrite', (s) => s.put(v, k)).then(() => true).catch(() => false),
+  del: (k) => idb.run('readwrite', (s) => s.delete(k)).then(() => true).catch(() => false),
 };
 
 const usd = (v) => `$${v < 0.01 ? v.toFixed(3) : v.toFixed(2)} USD`;
@@ -92,30 +96,20 @@ function setStatus(id, text, error = false) {
   el.classList.toggle('error', error);
 }
 
-function showResult(id, url, downloads = {}) {
-  const box = $(id);
-  box.hidden = false;
-  box.querySelector('audio').src = url;
-  const links = box.querySelectorAll('a[download]');
-  links.forEach((a) => {
-    const key = a.dataset.dl;
-    a.href = key ? downloads[key] ?? '#' : downloads.main ?? url;
-    a.hidden = key ? !downloads[key] : false;
-  });
+// URL de objeto que se libera al reemplazarla (evita acumular cientos de MB en el móvil).
+const urls = {};
+function ownUrl(key, blob) {
+  if (urls[key]) URL.revokeObjectURL(urls[key]);
+  urls[key] = blob ? URL.createObjectURL(blob) : null;
+  return urls[key];
 }
 
-// Copia local (mismo origen) de un archivo remoto para que «Descargar» funcione.
+// Copia local (mismo origen) de un archivo remoto para que «Descargar» lo guarde de verdad.
 async function localCopy(url) {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error();
-    return URL.createObjectURL(await r.blob());
-  } catch {
-    return url;
-  }
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Error ${r.status}`);
+  return r.blob();
 }
-
-const wavUrl = (buffer) => URL.createObjectURL(bufferToWav(buffer));
 
 function makeBuffer(samples, sampleRate) {
   const b = new AudioBuffer({ length: Math.max(1, samples.length), numberOfChannels: 1, sampleRate });
@@ -123,13 +117,19 @@ function makeBuffer(samples, sampleRate) {
   return b;
 }
 
+// Reparte el trabajo en n procesos; al primer error deja de empezar trabajos nuevos.
 async function pool(items, n, fn) {
   const out = new Array(items.length);
-  let next = 0;
+  let next = 0, failed = false;
   const worker = async () => {
-    while (next < items.length) {
+    while (!failed && next < items.length) {
       const i = next++;
-      out[i] = await fn(items[i], i);
+      try {
+        out[i] = await fn(items[i], i);
+      } catch (e) {
+        failed = true;
+        throw e;
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
@@ -137,6 +137,7 @@ async function pool(items, n, fn) {
 }
 
 // Ejecuta una tarea de IA con contraseña, confirmación de costo, cancelación y mensajes de error.
+// Al terminar (bien, mal o cancelada) se aborta su señal: si queda algún trabajo en fal.ai, se cancela.
 async function task({ statusId, cancelId, confirmText, run }) {
   if (state.busy) return;
   const password = $('password').value;
@@ -148,22 +149,38 @@ async function task({ statusId, cancelId, confirmText, run }) {
   if (confirmText && !window.confirm(confirmText)) return;
   storage.set('tm-ai-password', password);
   setStatus(statusId, 'Empezando…');
+  const ac = new AbortController();
   state.busy = true;
-  state.abort = new AbortController();
+  state.abort = ac;
   if (cancelId) $(cancelId).hidden = false;
   updateButtons();
   try {
-    await run({ fal: falClient(password), signal: state.abort.signal, status: (t) => setStatus(statusId, t) });
+    await run({
+      fal: falClient(password),
+      signal: ac.signal,
+      // Tras cancelar o fallar, los procesos que aún terminan no pisan el mensaje final.
+      status: (t) => { if (!ac.signal.aborted) setStatus(statusId, t); },
+    });
   } catch (err) {
     console.error(err);
-    if (err?.name === 'AbortError') setStatus(statusId, 'Cancelado. Lo que la IA ya procesó puede cobrarse.', true);
-    else setStatus(statusId, `No se pudo completar: ${explainError(err)}`, true);
+    const msg = err?.name === 'AbortError'
+      ? 'Cancelado. Lo que la IA ya procesó puede cobrarse.'
+      : `No se pudo completar: ${explainError(err)}`;
+    ac.abort();
+    setStatus(statusId, msg + (err?.hint ? ` ${err.hint}` : ''), true);
   } finally {
+    ac.abort();
     state.busy = false;
     state.abort = null;
     if (cancelId) $(cancelId).hidden = true;
     updateButtons();
   }
+}
+
+function cancelTask(statusId) {
+  if (!state.abort) return;
+  state.abort.abort();
+  setStatus(statusId, 'Cancelando…');
 }
 
 // Sube la muestra de voz una vez por visita.
@@ -174,6 +191,14 @@ async function voiceUrl(fal, signal) {
 }
 
 // ---------- 1. Tu voz ----------
+
+function showVoice(wav, text) {
+  $('voicePlayer').src = ownUrl('voice', wav);
+  $('voicePlayer').hidden = false;
+  $('voiceBadge').hidden = false;
+  $('voiceForget').hidden = false;
+  setStatus('voiceStatus', text);
+}
 
 async function setVoice(blob, source) {
   setStatus('voiceStatus', 'Preparando la muestra…');
@@ -188,49 +213,67 @@ async function setVoice(blob, source) {
   const samples = await toMono(buffer, 24000);
   const wav = encodeWav([samples.subarray(0, 30 * 24000)], 24000);
   state.voice = { wav };
-  idb.set('voice', { wav, source, date: Date.now() });
-  $('voicePlayer').src = URL.createObjectURL(wav);
-  $('voicePlayer').hidden = false;
-  $('voiceBadge').hidden = false;
-  setStatus('voiceStatus', `Voz guardada en este dispositivo (${Math.min(30, buffer.duration).toFixed(0)} s, ${source}).`);
+  const secs = Math.min(30, buffer.duration).toFixed(0);
+  showVoice(wav, `Voz lista (${secs} s, ${source}).`);
   updateButtons();
+  const saved = await idb.set('voice', { wav, source, date: Date.now() });
+  if (state.voice?.wav === wav) {
+    setStatus('voiceStatus', saved
+      ? `Voz lista y guardada en este dispositivo (${secs} s, ${source}).`
+      : `Voz lista (${secs} s, ${source}). Este navegador no deja guardarla: tendrás que grabarla otra vez la próxima visita.`);
+  }
 }
 
 let recording = null;
 $('recBtn').addEventListener('click', async () => {
   if (recording) {
-    const blob = await recording.stop();
+    const take = recording;
     recording = null;
+    const blob = await take.stop();
     $('recBtn').textContent = '● Grabar mi voz';
     $('recBtn').classList.remove('recording');
     $('recLevel').style.width = '0';
     return setVoice(blob, 'grabada');
   }
   try {
-    recording = await recordMic({
+    const take = await recordMic({
       maxSeconds: 30,
       onLevel: (v) => { $('recLevel').style.width = `${Math.round(v * 100)}%`; },
       onTick: (s) => { $('recInfo').textContent = `${s.toFixed(0)} / 30 s${s < 10 ? ' (mínimo 10 s)' : ''}`; },
     });
+    recording = take;
     $('recBtn').textContent = '■ Terminar';
     $('recBtn').classList.add('recording');
     setStatus('voiceStatus', 'Grabando… lee la frase y sigue hablando con naturalidad.');
-    // Se detiene sola a los 30 s.
-    setTimeout(async () => { if (recording) $('recBtn').click(); }, 30_500);
+    // Se detiene sola a los 30 s (solo esta toma, no una posterior).
+    setTimeout(() => { if (recording === take) $('recBtn').click(); }, 30_500);
   } catch (err) {
     recording = null;
     setStatus('voiceStatus', `No se pudo usar el micrófono: ${err.message}`, true);
   }
 });
 
+const needConsent = () => {
+  if ($('voiceConsent').checked) return false;
+  setStatus('voiceStatus', 'Primero marca la casilla: solo puedes usar tu voz o la de alguien que te dé permiso.', true);
+  return true;
+};
+// Se comprueba antes de abrir el selector de archivos (y otra vez al elegir, por si acaso).
+$('voiceInput').addEventListener('click', (e) => { if (needConsent()) e.preventDefault(); });
 $('voiceInput').addEventListener('change', () => {
   const f = $('voiceInput').files[0];
   $('voiceInput').value = '';
-  if (!f) return;
-  if (!$('voiceConsent').checked) {
-    return setStatus('voiceStatus', 'Marca la casilla: solo puedes usar tu voz o la de alguien que te dé permiso.', true);
-  }
-  setVoice(f, 'subida');
+  if (f && !needConsent()) setVoice(f, 'subida');
+});
+$('voiceForget').addEventListener('click', async () => {
+  state.voice = null;
+  await idb.del('voice');
+  ownUrl('voice', null);
+  $('voicePlayer').hidden = true;
+  $('voiceBadge').hidden = true;
+  $('voiceForget').hidden = true;
+  setStatus('voiceStatus', 'Voz borrada de este dispositivo.');
+  updateButtons();
 });
 
 // ---------- 2. Hablar con tu voz ----------
@@ -250,7 +293,7 @@ function chunkText(text, max = 280) {
     cur += p;
   }
   if (cur.trim()) out.push(cur.trim());
-  return out;
+  return out.filter((c) => /[\p{L}\p{N}]/u.test(c));
 }
 
 function updateTtsInfo() {
@@ -263,8 +306,10 @@ $('ttsBtn').addEventListener('click', () => {
   if (!text) return setStatus('ttsStatus', 'Escribe un texto.', true);
   if (!state.voice) return setStatus('ttsStatus', 'Primero graba o sube tu voz (paso 1).', true);
   const chunks = chunkText(text);
+  if (!chunks.length) return setStatus('ttsStatus', 'Escribe un texto con palabras, no solo signos.', true);
   task({
     statusId: 'ttsStatus',
+    cancelId: 'ttsCancel',
     confirmText: `Se generará el audio con tu voz en fal.ai (unos ${usd(text.length * PRICE.ttsChar)}). ¿Continuar?`,
     run: async ({ fal, signal, status }) => {
       status('Subiendo tu voz…');
@@ -278,17 +323,20 @@ $('ttsBtn').addEventListener('click', () => {
           custom_audio_language: $('ttsLang').value,
           exaggeration: Number($('ttsExpr').value),
         }, { signal, onStatus: (t) => status(`${i + 1}/${chunks.length} · ${t}`), label: 'Generando' });
-        const url = data?.audio?.url ?? findUrl(data, ['wav', 'mp3', 'flac', 'ogg', 'm4a']);
+        const url = data?.audio?.url ?? findUrl(data, AUDIO_EXT);
         if (!url) throw new Error('La IA no devolvió audio.');
         buffers.push(await fetchAudio(url, { signal }));
       }
       const out = await concat(buffers, { gap: 0.3, sampleRate: buffers[0].sampleRate });
-      const url = wavUrl(out);
-      showResult('ttsResult', url, { main: url });
+      const url = ownUrl('tts', bufferToWav(out));
+      $('ttsResult').hidden = false;
+      $('ttsResult').querySelector('audio').src = url;
+      $('ttsResult').querySelector('a').href = url;
       status('¡Listo! ✓');
     },
   });
 });
+$('ttsCancel').addEventListener('click', () => cancelTask('ttsStatus'));
 
 // ---------- 3. Cover ----------
 
@@ -316,10 +364,10 @@ function frags(duration) {
 function updateCoverInfo() {
   const s = state.song;
   if (!s) return void ($('coverInfo').textContent = '');
-  const sep = s.duration * PRICE.demucsSec;
+  const sep = s.sep ? 'separación ya hecha (gratis)' : `separar ~${usd(s.duration * PRICE.demucsSec)}`;
   $('coverInfo').textContent = $('karaoke').checked
-    ? `Separar ${mmss(s.duration)}: ~${usd(sep)}`
-    : `Separar ~${usd(sep)} + cambiar la voz (${frags(s.duration)}, tarifa de fal.ai)`;
+    ? `${mmss(s.duration)} · ${sep}`
+    : `${mmss(s.duration)} · ${sep} + cambiar la voz (${frags(s.duration)}, sin estimación: tarifa de fal.ai)`;
 }
 
 $('songInput').addEventListener('change', () => {
@@ -328,15 +376,65 @@ $('songInput').addEventListener('change', () => {
   if (f) setSong(f, f.name);
 });
 
+// Mezcla el resultado publicado con el volumen de voz actual, sin reiniciar la reproducción.
 async function remixCover() {
   const c = state.cover;
   if (!c) return;
   const tracks = [{ buffer: c.inst }];
   if (c.vocals) tracks.push({ buffer: c.vocals, gain: Number($('vocalGain').value) });
   const out = await mix(tracks, { sampleRate: c.inst.sampleRate, channels: 2, duration: c.inst.duration });
-  if (c.coverUrl) URL.revokeObjectURL(c.coverUrl);
-  c.coverUrl = wavUrl(out);
-  showResult('coverResult', c.coverUrl, { cover: c.coverUrl, inst: c.instUrl, vocals: c.vocalsUrl });
+  if (state.cover !== c) return;
+  const player = $('coverResult').querySelector('audio');
+  const t = player.currentTime, playing = !player.paused;
+  c.url = ownUrl('cover', bufferToWav(out));
+  player.src = c.url;
+  if (t) player.currentTime = t;
+  if (playing) player.play().catch(() => {});
+  $('coverResult').hidden = false;
+  $('coverResult').querySelector('[data-dl="cover"]').href = c.url;
+  // Instrumental y voz: el WAV se crea al pulsar (ver el manejador de clics de abajo).
+  $('coverResult').querySelectorAll('[data-dl="inst"], [data-dl="vocals"]').forEach((a) => { a.href = '#'; });
+  $('coverResult').querySelector('[data-dl="vocals"]').hidden = !(c.vocals || c.origVocals);
+}
+
+// Instrumental y voz se convierten en WAV solo al pulsar «Descargar» (ahorra mucha memoria).
+$('coverResult').addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-dl]');
+  if (!a || a.dataset.dl === 'cover' || !state.cover) return;
+  // «Voz sola»: tu voz convertida o, en karaoke, la voz original separada.
+  const buf = a.dataset.dl === 'inst' ? state.cover.inst : state.cover.vocals ?? state.cover.origVocals;
+  if (buf) a.href = ownUrl(`dl-${a.dataset.dl}`, bufferToWav(buf));
+});
+
+// Suma pistas una a una sobre la primera (sin tener todas a la vez en memoria).
+async function sumStems(urls, signal) {
+  let acc = null;
+  for (const url of urls) {
+    if (!url) continue;
+    const b = await fetchAudio(url, { signal });
+    if (!acc) { acc = b; continue; }
+    for (let c = 0; c < acc.numberOfChannels; c++) {
+      const dst = acc.getChannelData(c), src = b.getChannelData(Math.min(c, b.numberOfChannels - 1));
+      for (let i = 0, n = Math.min(dst.length, src.length); i < n; i++) dst[i] += src[i];
+    }
+  }
+  return acc;
+}
+
+async function separate(fal, song, { signal, status }) {
+  if (song.sep) return song.sep;
+  status('Subiendo la canción…');
+  song.url ??= await upload(fal, song.file, { signal });
+  const stems = await runJob(fal, M.demucs, {
+    audio_url: song.url, model: 'htdemucs', stems: ['vocals', 'drums', 'bass', 'other'], output_format: 'mp3',
+  }, { signal, onStatus: status, label: 'Separando voz y música' });
+  status('Descargando las pistas…');
+  const inst = await sumStems(['drums', 'bass', 'other'].map((k) => stems?.[k]?.url), signal);
+  const vocals = stems?.vocals?.url ? await fetchAudio(stems.vocals.url, { signal }) : null;
+  if (!vocals || !inst) throw new Error('La separación no devolvió las pistas esperadas.');
+  // Se guarda: si luego falla el cambio de voz, reintentar no vuelve a cobrar la separación.
+  song.sep = { inst, vocals };
+  return song.sep;
 }
 
 async function runCover() {
@@ -349,23 +447,10 @@ async function runCover() {
     cancelId: 'coverCancel',
     confirmText: `Se procesará «${song.name}» en fal.ai (${$('coverInfo').textContent}). ¿Continuar?`,
     run: async ({ fal, signal, status }) => {
-      status('Subiendo la canción…');
-      const songUrl = await upload(fal, song.file, { signal });
-      const stems = await runJob(fal, M.demucs, {
-        audio_url: songUrl, model: 'htdemucs', stems: ['vocals', 'drums', 'bass', 'other'], output_format: 'mp3',
-      }, { signal, onStatus: status, label: 'Separando voz y música' });
-      status('Descargando las pistas…');
-      const [vocals, ...rest] = await Promise.all(['vocals', 'drums', 'bass', 'other'].map((k) => {
-        const url = stems?.[k]?.url;
-        return url ? fetchAudio(url, { signal }) : null;
-      }));
-      const parts = rest.filter(Boolean);
-      if (!vocals || !parts.length) throw new Error('La separación no devolvió las pistas esperadas.');
-      const inst = await mix(parts.map((b) => ({ buffer: b })), { sampleRate: parts[0].sampleRate, channels: 2 });
-      state.cover = { inst, instUrl: wavUrl(inst), vocals: karaoke ? null : undefined };
-
+      const { inst, vocals } = await separate(fal, song, { signal, status });
+      updateCoverInfo();
       if (karaoke) {
-        state.cover.vocalsUrl = wavUrl(vocals);
+        state.cover = { inst, vocals: null, origVocals: vocals };
         await remixCover();
         return status('¡Listo! ✓ Instrumental separado.');
       }
@@ -374,27 +459,32 @@ async function runCover() {
       const SR = 24000;
       const voice = await voiceUrl(fal, signal);
       const mono = await toMono(vocals, SR);
-      const segs = findSegments(mono, SR, { maxLen: 20, minLen: 6 });
+      const segs = findSegments(mono, SR, { maxLen: 20, minLen: 6 }).filter((s) => s.end - s.start > 0.3);
       const todo = segs.filter((s) => !s.silent);
       let done = 0;
       status(`Cambiando la voz: 0/${todo.length}…`);
-      const converted = await pool(todo, 3, async (seg) => {
-        const wav = encodeWav([slice(mono, SR, seg.start, seg.end)], SR);
-        const src = await upload(fal, wav, { signal });
-        const data = await runJob(fal, M.vc, {
-          source_audio_url: src, target_voice_audio_url: voice, high_quality_audio: true,
-        }, { signal, label: 'Cambiando la voz' });
-        const url = data?.audio?.url ?? findUrl(data, ['wav', 'mp3', 'flac', 'ogg', 'm4a']);
-        if (!url) throw new Error('La IA no devolvió la voz convertida.');
-        const out = await toMono(await fetchAudio(url, { signal }), SR);
-        status(`Cambiando la voz: ${++done}/${todo.length}…`);
-        return { ...seg, samples: out };
-      });
+      let converted;
+      try {
+        converted = await pool(todo, 3, async (seg) => {
+          const wav = encodeWav([slice(mono, SR, seg.start, seg.end)], SR);
+          const src = await upload(fal, wav, { signal });
+          const data = await runJob(fal, M.vc, {
+            // 24 kHz nativos: es la frecuencia con la que se coloca la voz.
+            source_audio_url: src, target_voice_audio_url: voice, high_quality_audio: false,
+          }, { signal, label: 'Cambiando la voz' });
+          const url = data?.audio?.url ?? findUrl(data, AUDIO_EXT);
+          if (!url) throw new Error('La IA no devolvió la voz convertida.');
+          const out = await toMono(await fetchAudio(url, { signal }), SR);
+          status(`Cambiando la voz: ${++done}/${todo.length}…`);
+          return { ...seg, samples: out };
+        });
+      } catch (e) {
+        e.hint = 'La separación ya está guardada: puedes reintentar sin pagarla otra vez, o marcar «Solo separar».';
+        throw e;
+      }
       if (signal.aborted) throw aborted();
       status('Mezclando…');
-      const newVocals = makeBuffer(placeSegments(mono.length, SR, converted), SR);
-      state.cover.vocals = newVocals;
-      state.cover.vocalsUrl = wavUrl(newVocals);
+      state.cover = { inst, vocals: makeBuffer(placeSegments(mono.length, SR, converted), SR) };
       await remixCover();
       status('¡Listo! ✓ Ajusta el volumen de la voz si hace falta.');
     },
@@ -402,12 +492,12 @@ async function runCover() {
 }
 
 $('coverBtn').addEventListener('click', runCover);
-$('coverCancel').addEventListener('click', () => state.abort?.abort());
+$('coverCancel').addEventListener('click', () => cancelTask('coverStatus'));
 $('karaoke').addEventListener('change', updateCoverInfo);
 let remixTimer = 0;
 $('vocalGain').addEventListener('input', () => {
   clearTimeout(remixTimer);
-  remixTimer = setTimeout(() => remixCover().catch(console.error), 250);
+  remixTimer = setTimeout(() => remixCover().catch(console.error), 300);
 });
 
 // ---------- 4. Crear canción ----------
@@ -431,7 +521,7 @@ function updateMusicMode() {
   $('lyrics').hidden = mode !== 'lyrics';
   $('durField').hidden = mode !== 'inst';
   $('singer').disabled = mode === 'inst';
-  const cost = mode === 'lyrics' ? `~${usd(PRICE.minimax)}` : mode === 'inst' ? `~${usd(PRICE.aceSec * Number($('duration').value))}` : 'tarifa de fal.ai';
+  const cost = mode === 'lyrics' ? `~${usd(PRICE.minimax)}` : mode === 'inst' ? `~${usd(PRICE.aceSec * Number($('duration').value))}` : 'sin estimación (tarifa de fal.ai)';
   $('musicInfo').textContent = `Costo aproximado: ${cost}`;
 }
 
@@ -440,15 +530,46 @@ function musicPrompt(extra = []) {
   return parts.filter(Boolean).join(', ').slice(0, 300);
 }
 
+async function showSong(data, { inst, words }) {
+  const audio = Array.isArray(data?.audio) ? data.audio[0] : data?.audio;
+  const url = audio?.url ?? findUrl(data, AUDIO_EXT);
+  if (!url) throw new Error('La IA no devolvió la canción.');
+  const ext = ((audio?.file_name ?? url).match(/\.(mp3|wav|flac|ogg|m4a)(?:$|[?#])/i)?.[1]
+    ?? (/wav/i.test(audio?.content_type ?? '') ? 'wav' : 'mp3')).toLowerCase();
+  state.music = { url, inst };
+  const box = $('musicResult');
+  box.hidden = false;
+  box.querySelector('audio').src = url;
+  const dl = box.querySelector('a[download]');
+  dl.download = `cancion.${ext}`;
+  // Hasta tener la copia local, el enlace abre el archivo en otra pestaña (no saca de la app).
+  dl.href = url;
+  $('singWithMe').hidden = inst;
+  $('musicLyrics').hidden = !words;
+  $('musicLyrics').textContent = words || '';
+  localCopy(url).then((blob) => {
+    if (state.music?.url !== url) return;
+    state.music.blob = blob;
+    dl.href = ownUrl('music', blob);
+  }).catch(() => {});
+}
+
+function musicTask(run) {
+  return task({
+    statusId: 'musicStatus',
+    cancelId: 'musicCancel',
+    ...run,
+  });
+}
+
 $('musicBtn').addEventListener('click', () => {
   const mode = $('musicMode').value;
   const lyrics = $('lyrics').value.trim();
   if (mode === 'lyrics' && lyrics.length < 10) return setStatus('musicStatus', 'Escribe la letra (al menos una línea), o elige «La IA escribe la letra».', true);
-  task({
-    statusId: 'musicStatus',
+  musicTask({
     confirmText: `Se creará la canción en fal.ai. ${$('musicInfo').textContent}. ¿Continuar?`,
     run: async ({ fal, signal, status }) => {
-      let data, endpoint, input;
+      let endpoint, input;
       if (mode === 'lyrics') {
         endpoint = M.minimax;
         input = { prompt: musicPrompt().padEnd(10, '.'), lyrics_prompt: lyrics };
@@ -459,31 +580,40 @@ $('musicBtn').addEventListener('click', () => {
         endpoint = M.ace;
         input = { tags: musicPrompt(), lyrics: '[instrumental]', duration: Number($('duration').value) };
       }
-      data = await runJob(fal, endpoint, input, { signal, onStatus: status, label: 'Componiendo (suele tardar 1–3 min)' });
-      const audio = Array.isArray(data?.audio) ? data.audio[0] : data?.audio;
-      const url = audio?.url ?? findUrl(data, ['mp3', 'wav', 'flac', 'ogg', 'm4a']);
-      if (!url) throw new Error('La IA no devolvió la canción.');
-      state.music = { url };
-      showResult('musicResult', url, { main: url });
-      localCopy(url).then((local) => {
-        state.music.local = local;
-        $('musicResult').querySelector('a[download]').href = local;
+      storage.set(`${MUSIC_JOB}-meta`, JSON.stringify({ mode, lyrics: mode === 'lyrics' ? lyrics : '' }));
+      const data = await runJob(fal, endpoint, input, {
+        signal, onStatus: status, label: 'Componiendo (suele tardar 1–3 min)', storeKey: MUSIC_JOB,
       });
-      const words = mode === 'lyrics' ? lyrics : data?.lyrics;
-      $('musicLyrics').hidden = !words;
-      $('musicLyrics').textContent = words || '';
+      await showSong(data, { inst: mode === 'inst', words: mode === 'lyrics' ? lyrics : mode === 'auto' ? data?.lyrics : '' });
       status('¡Listo! ✓');
+      updateButtons();
     },
   });
 });
 
+// Canción pendiente (la pestaña se cerró mientras se componía): se recupera sin volver a pagar.
+$('musicResume').addEventListener('click', () => {
+  let meta = {};
+  try { meta = JSON.parse(storage.get(`${MUSIC_JOB}-meta`) || '{}'); } catch { /* sin datos */ }
+  musicTask({
+    run: async ({ fal, signal, status }) => {
+      status('Recuperando la canción pendiente…');
+      const data = await resumeJob(fal, MUSIC_JOB, { signal, onStatus: status, label: 'Componiendo' });
+      await showSong(data, { inst: meta.mode === 'inst', words: meta.mode === 'lyrics' ? meta.lyrics : data?.lyrics });
+      status('¡Listo! ✓');
+      updateButtons();
+    },
+  });
+});
+$('musicCancel').addEventListener('click', () => cancelTask('musicStatus'));
+
 $('singWithMe').addEventListener('click', async () => {
-  if (!state.music) return;
+  if (!state.music || state.music.inst || state.busy) return;
   if (!state.voice) return setStatus('musicStatus', 'Primero graba o sube tu voz (paso 1).', true);
   setStatus('musicStatus', 'Preparando la canción…');
   try {
-    const r = await fetch(state.music.local ?? state.music.url);
-    await setSong(await r.blob(), 'canción creada');
+    const blob = state.music.blob ?? await localCopy(state.music.url);
+    await setSong(blob, 'canción creada');
     $('karaoke').checked = false;
     updateCoverInfo();
     $('coverPanel').scrollIntoView({ behavior: 'smooth' });
@@ -505,6 +635,9 @@ function updateButtons() {
   $('coverBtn').disabled = !ok || !state.song;
   $('musicBtn').disabled = !ok;
   $('singWithMe').disabled = !ok;
+  $('vocalGain').disabled = state.busy;
+  $('musicResume').hidden = !jobStore.get(MUSIC_JOB);
+  $('musicResume').disabled = !ok;
   updateTtsInfo();
   updateCoverInfo();
 }
@@ -536,10 +669,7 @@ checkServer();
 idb.get('voice').then((v) => {
   if (!v?.wav || state.voice) return;
   state.voice = { wav: v.wav };
-  $('voicePlayer').src = URL.createObjectURL(v.wav);
-  $('voicePlayer').hidden = false;
-  $('voiceBadge').hidden = false;
-  setStatus('voiceStatus', `Usando tu voz guardada (${v.source ?? 'muestra'}). Puedes grabar otra cuando quieras.`);
+  showVoice(v.wav, `Usando tu voz guardada (${v.source ?? 'muestra'}). Puedes grabar otra cuando quieras.`);
   updateButtons();
 });
 
