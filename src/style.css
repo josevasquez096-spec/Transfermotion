@@ -169,3 +169,10 @@ h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .ai-result { margin-top: 12px; display: grid; gap: 10px; justify-items: start; }
 .ai-result[hidden] { display: none; }
 .ai-result video { max-width: 100%; max-height: 70vh; border-radius: 12px; background: #000; }
+
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs a {
+  color: var(--muted); text-decoration: none; font-size: 14px;
+  padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+}
+.tabs a[aria-current='page'] { color: var(--accent); border-color: var(--accent); }

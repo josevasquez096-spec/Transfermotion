@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Estudio de voz y música · Transfer Motion</title>
+    <meta name="description" content="Clona tu voz, haz covers con tu voz y crea canciones en distintos estilos con IA." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/studio/studio.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">TM</span>
+        <div>
+          <h1>Estudio de voz y música</h1>
+          <p>Tu voz con IA, covers con tu voz y canciones en cualquier estilo</p>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Secciones">
+        <a href="./index.html">🎬 Video</a>
+        <a href="./studio.html" aria-current="page">🎤 Voz y música</a>
+      </nav>
+    </header>
+
+    <main class="grid studio">
+      <section class="panel wide">
+        <div id="setup" class="notice" hidden></div>
+        <div class="controls">
+          <label class="field">Contraseña de la app <input id="password" type="password" autocomplete="current-password" /></label>
+          <span class="hint">Todo se genera en fal.ai y se cobra a tu cuenta; antes de cada uso verás el costo aproximado.</span>
+        </div>
+      </section>
+
+      <!-- 1. Tu voz -->
+      <section class="panel wide" id="voicePanel">
+        <div class="panel-head">
+          <h2><span class="step">1</span> Tu voz</h2>
+          <span id="voiceBadge" class="badge" hidden>Voz lista ✓</span>
+        </div>
+        <p class="lead">Graba entre 10 y 30 segundos hablando con naturalidad, en un lugar sin ruido. Empieza leyendo esta frase:</p>
+        <blockquote id="consentPhrase" class="phrase">
+          “Doy mi consentimiento para crear una copia de mi voz con inteligencia artificial y usarla en este estudio.”
+          Después sigue hablando de lo que quieras: cómo fue tu día, tu comida favorita, un recuerdo…
+        </blockquote>
+        <div class="controls">
+          <button id="recBtn" class="btn primary">● Grabar mi voz</button>
+          <span id="recInfo" class="hint"></span>
+          <span class="meter"><span id="recLevel"></span></span>
+          <label class="btn ghost">Subir audio<input id="voiceInput" type="file" accept="audio/*,video/*" hidden /></label>
+          <label class="check"><input id="voiceConsent" type="checkbox" /> Es mi voz o tengo permiso de la persona</label>
+        </div>
+        <audio id="voicePlayer" controls hidden></audio>
+        <p id="voiceStatus" class="ai-status" role="status"></p>
+      </section>
+
+      <!-- 2. Hablar con tu voz -->
+      <section class="panel" id="ttsPanel">
+        <div class="panel-head"><h2><span class="step">2</span> Hablar con tu voz</h2></div>
+        <textarea id="ttsText" rows="5" maxlength="2000" placeholder="Escribe lo que quieres que diga tu voz…"></textarea>
+        <div class="controls">
+          <label class="field">Idioma
+            <select id="ttsLang">
+              <option value="spanish" selected>Español</option>
+              <option value="english">Inglés</option>
+              <option value="portuguese">Portugués</option>
+              <option value="french">Francés</option>
+              <option value="italian">Italiano</option>
+              <option value="german">Alemán</option>
+            </select>
+          </label>
+          <label class="field">Expresividad <input id="ttsExpr" type="range" min="0.25" max="1.2" step="0.05" value="0.5" /></label>
+          <button id="ttsBtn" class="btn primary">🗣️ Generar</button>
+        </div>
+        <p id="ttsInfo" class="hint"></p>
+        <p id="ttsStatus" class="ai-status" role="status"></p>
+        <div id="ttsResult" class="result" hidden><audio controls></audio><a class="btn" download="mi-voz.wav">⬇ Descargar</a></div>
+      </section>
+
+      <!-- 3. Cover -->
+      <section class="panel" id="coverPanel">
+        <div class="panel-head"><h2><span class="step">3</span> Cover con tu voz</h2></div>
+        <p class="lead">Sube una canción: la IA separa la voz de la música y cambia la voz por la tuya.</p>
+        <div class="controls">
+          <label class="btn">Subir canción<input id="songInput" type="file" accept="audio/*,video/*" hidden /></label>
+          <span id="songName" class="hint"></span>
+        </div>
+        <div class="controls">
+          <label class="check"><input id="karaoke" type="checkbox" /> Solo separar (karaoke, sin cambiar la voz)</label>
+          <label class="field">Volumen de la voz <input id="vocalGain" type="range" min="0" max="2" step="0.05" value="1" /></label>
+          <button id="coverBtn" class="btn primary">🎙️ Hacer cover</button>
+          <button id="coverCancel" class="btn ghost small" hidden>Cancelar</button>
+        </div>
+        <p id="coverInfo" class="hint"></p>
+        <p id="coverStatus" class="ai-status" role="status"></p>
+        <div id="coverResult" class="result" hidden>
+          <audio controls></audio>
+          <div class="btns">
+            <a class="btn" data-dl="cover" download="cover.wav">⬇ Cover</a>
+            <a class="btn ghost" data-dl="inst" download="instrumental.wav">⬇ Instrumental</a>
+            <a class="btn ghost" data-dl="vocals" download="voz.wav">⬇ Voz sola</a>
+          </div>
+        </div>
+        <p class="hint small">Experimental: el modelo de voz está pensado para el habla; en notas muy altas o largas puede perder la melodía.
+          Para publicar un cover respeta los derechos de la canción original.</p>
+      </section>
+
+      <!-- 4. Crear canción -->
+      <section class="panel wide" id="musicPanel">
+        <div class="panel-head"><h2><span class="step">4</span> Crear una canción</h2></div>
+        <div class="chips" id="styles" role="radiogroup" aria-label="Estilo"></div>
+        <div class="controls">
+          <label class="field">Ánimo
+            <select id="mood">
+              <option value="">—</option>
+              <option value="happy, upbeat">Alegre</option>
+              <option value="romantic, tender">Romántico</option>
+              <option value="sad, melancholic">Triste</option>
+              <option value="energetic, powerful">Enérgico</option>
+              <option value="chill, relaxed">Relajado</option>
+              <option value="epic, cinematic">Épico</option>
+              <option value="dark, intense">Oscuro</option>
+            </select>
+          </label>
+          <label class="field">Voz
+            <select id="singer">
+              <option value="">Cualquiera</option>
+              <option value="female vocals">Femenina</option>
+              <option value="male vocals">Masculina</option>
+            </select>
+          </label>
+          <label class="field">Modo
+            <select id="musicMode">
+              <option value="lyrics" selected>Con mi letra</option>
+              <option value="auto">La IA escribe la letra</option>
+              <option value="inst">Instrumental</option>
+            </select>
+          </label>
+          <label class="field" id="durField" hidden>Duración <select id="duration"><option value="30">30 s</option><option value="60" selected>1 min</option><option value="120">2 min</option><option value="180">3 min</option></select></label>
+        </div>
+        <input id="musicDesc" class="wide-input" maxlength="200" placeholder="Describe tu canción (opcional): de qué trata, instrumentos, ambiente…" />
+        <textarea id="lyrics" rows="8" maxlength="3000" placeholder="[Verso]
+Camino por la orilla con el sol de frente
+mis pasos van contando lo que siente la gente
+
+[Coro]
+Y vuelve, vuelve la luz
+cuando cantamos juntos tú y yo"></textarea>
+        <div class="controls">
+          <button id="musicBtn" class="btn primary">🎵 Crear canción</button>
+          <span id="musicInfo" class="hint"></span>
+        </div>
+        <p id="musicStatus" class="ai-status" role="status"></p>
+        <div id="musicResult" class="result" hidden>
+          <audio controls></audio>
+          <div class="btns">
+            <a class="btn" download="cancion.mp3">⬇ Descargar</a>
+            <button id="singWithMe" class="btn primary">🎤 Cantarla con mi voz</button>
+          </div>
+          <pre id="musicLyrics" class="lyrics" hidden></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      Usa solo tu voz o la de personas que te hayan dado permiso. Las grabaciones se procesan en fal.ai con tu cuenta.
+    </footer>
+    <script type="module" src="/src/studio/main.js"></script>
+  </body>
+</html>
