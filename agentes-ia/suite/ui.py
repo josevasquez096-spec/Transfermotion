@@ -33,6 +33,24 @@ FILETYPES = {
 EXTENSIONS = {"excel": ".xlsx", "csv": ".csv", "word": ".docx", "pptx": ".pptx", "text": ".txt", "json": ".json"}
 
 
+def _enable_dpi_awareness():
+    """En Windows, sin esto el texto se ve borroso en pantallas con escala de 125 % o más."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
+
+
+_enable_dpi_awareness()
+
+
 def open_path(path):
     try:
         if sys.platform == "win32":
@@ -62,8 +80,12 @@ class PilotApp(tk.Tk):
         self.withdraw()
         self._setup_theme()
         self.title(self.APP_NAME)
-        self.geometry("1200x800")
-        self.minsize(1000, 660)
+        # Tamaño según la escala de la pantalla, sin pasar del área visible (portátiles de 1366×768).
+        self.scale = max(1.0, self.winfo_fpixels("1i") / 96)
+        width = min(int(1200 * self.scale), self.winfo_screenwidth() - 40)
+        height = min(int(800 * self.scale), self.winfo_screenheight() - 80)
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(int(1000 * self.scale), width), min(int(600 * self.scale), height))
         self._icon = None
         try:
             from PIL import ImageTk
@@ -87,7 +109,7 @@ class PilotApp(tk.Tk):
             style.theme_use("clam")
             style.configure("Accent.TButton", foreground="white", background=self.ACCENT)
         style = ttk.Style(self)
-        style.configure("Treeview", rowheight=26)
+        style.configure("Treeview", rowheight=int(26 * max(1.0, self.winfo_fpixels("1i") / 96)))
         style.configure("Hint.TLabel", foreground="#5f6b7a")
         style.configure("Title.TLabel", font=("Segoe UI", 13, "bold"))
         style.configure("Big.TLabel", font=("Segoe UI", 22, "bold"))
