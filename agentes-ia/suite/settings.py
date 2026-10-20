@@ -1,4 +1,4 @@
-"""Configuración compartida por las cinco apps (idioma, clave de IA, modelo…)."""
+"""Configuración compartida por las apps de la suite (idioma, clave de IA, modelo…)."""
 
 import json
 import os

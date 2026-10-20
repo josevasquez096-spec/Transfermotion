@@ -80,6 +80,8 @@ def write_df(ws, df, accent="217346", start_row=1, start_col=1, number_format="#
     for i, row in enumerate(df.itertuples(index=False), start=1):
         for j, value in enumerate(row):
             cell = ws.cell(row=start_row + i, column=start_col + j, value=excel_value(value))
+            if isinstance(cell.value, str) and cell.value.startswith("="):
+                cell.data_type = "s"  # texto, no fórmula (los datos pueden venir de correos o archivos ajenos)
             cell.border = Border(bottom=THIN)
             if isinstance(cell.value, float):
                 cell.number_format = number_format

@@ -92,8 +92,33 @@ def _icepilot(out):
             office.build_pptx(cfg, out / f"{game}.pptx")
 
 
+def _mailpilot(out):
+    from .mailpilot import analysis, english
+    from .mailpilot.backend_demo import DemoBackend
+    from .mailpilot.edits import diff_changes
+    from .mailpilot.query import Query
+
+    assert english.speller("en") is not None, "falta el diccionario de inglés"
+    backend = DemoBackend("es")
+    folders = [f.id for s in backend.connect() for f in backend.folders(s.id) if f.depth > 0]
+    found, _ = backend.search(folders, Query("is:phishing OR has:card"), internal_domains=["banco-demo.com"])
+    assert len(found) >= 3, found
+    draft = backend.current_draft()
+    issues = english.check(draft["body"], draft["subject"])
+    fixed, subject = english.apply(draft["body"], issues, draft["subject"])
+    applied, failed, _ = backend.apply_to_current(diff_changes(draft["body"], fixed), subject)
+    assert issues and applied and not failed
+    claims = analysis.claims(backend.scan(found), internal=["banco-demo.com"])
+    analysis.export_excel(out / "analysis.xlsx", [("Claims", claims)])
+    assert backend.save_messages(found[:2], out)
+    if sys.platform == "win32":  # componentes para hablar con Outlook incluidos en el .exe
+        import pythoncom  # noqa: F401
+        import win32com.client  # noqa: F401
+        import win32timezone  # noqa: F401
+
+
 CHECKS = {"datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,
-          "fraudpilot": _fraudpilot, "icepilot": _icepilot}
+          "fraudpilot": _fraudpilot, "icepilot": _icepilot, "mailpilot": _mailpilot}
 
 
 def run(app):

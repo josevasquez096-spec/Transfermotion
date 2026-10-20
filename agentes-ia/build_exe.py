@@ -1,7 +1,7 @@
-"""Crea los ejecutables (.exe en Windows) de las cinco apps con PyInstaller.
+"""Crea los ejecutables (.exe en Windows) de las apps de la suite con PyInstaller.
 
 Uso:  python -m pip install -r requirements-dev.txt
-      python build_exe.py            # las cinco apps
+      python build_exe.py            # todas las apps
       python build_exe.py DataPilot  # solo una
 
 Los ejecutables quedan en la carpeta dist/. Cada uno es un único archivo que no necesita Python instalado.
@@ -22,6 +22,7 @@ APPS = {  # nombre: (texto del icono, color)
     "SlidePilot": ("P", "#C43E1C"),
     "FraudPilot": ("FR", "#7B1E3A"),
     "IcePilot": ("IB", "#6D28D9"),
+    "MailPilot": ("MP", "#0F6CBD"),
 }
 # Plantillas y temas que las librerías cargan desde sus propios archivos.
 DATA_PACKAGES = ("sv_ttk", "docx", "pptx")
@@ -29,6 +30,24 @@ DATA_PACKAGES = ("sv_ttk", "docx", "pptx")
 # ejecutable esas carpetas tienen que existir, así que se crean con un archivo vacío.
 PATH_DIRS = ("docx/parts", "pptx/oxml", "pptx/shapes")
 EXCLUDES = ("matplotlib", "scipy", "IPython", "pytest", "notebook", "PyQt5", "PySide6")
+# MailPilot: diccionarios del corrector (solo los tres idiomas de la suite) y el módulo de zonas horarias que
+# pywin32 carga al convertir las fechas de Outlook.
+SPELL_LANGS = {"MailPilot": ("en", "es", "fr")}
+HIDDEN_IMPORTS = {"MailPilot": ("win32timezone",)}
+
+
+def extra_args(name):
+    args = []
+    if name in SPELL_LANGS:
+        import spellchecker
+
+        resources = Path(spellchecker.__file__).parent / "resources"
+        for lang in SPELL_LANGS[name]:
+            args += ["--add-data", f"{resources / f'{lang}.json.gz'}{os.pathsep}spellchecker/resources"]
+    for module in HIDDEN_IMPORTS.get(name, ()):
+        if sys.platform == "win32":
+            args += ["--hidden-import", module]
+    return args
 
 
 def build(name):
@@ -47,6 +66,7 @@ def build(name):
         cmd += ["--add-data", f"{marker}{os.pathsep}{folder}"]
     for mod in EXCLUDES:
         cmd += ["--exclude-module", mod]
+    cmd += extra_args(name)
     cmd.append(str(ROOT / f"{name}.py"))
     print(f"\n=== {name} ===", flush=True)
     subprocess.run(cmd, check=True, cwd=ROOT)
