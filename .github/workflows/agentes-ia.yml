@@ -43,7 +43,7 @@ jobs:
       - name: Autoprueba de cada .exe
         shell: pwsh
         run: |
-          foreach ($app in "DataPilot", "BIPilot", "DocPilot", "SlidePilot", "FraudPilot", "IcePilot", "MailPilot") {
+          foreach ($app in "DataPilot", "BIPilot", "DocPilot", "SlidePilot", "FraudPilot", "IcePilot", "MailPilot", "MoreInfoPilot") {
             $p = Start-Process -FilePath (Resolve-Path "dist\$app.exe") -ArgumentList "--selftest" -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "$app.exe --selftest falló ($($p.ExitCode))" }
             Write-Host "$app.exe OK"

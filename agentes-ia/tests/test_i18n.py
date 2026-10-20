@@ -22,11 +22,12 @@ from suite.mailpilot import query as mp_query
 from suite.mailpilot import rules as mp_rules
 from suite.mailpilot.strings import HELP as MP_HELP
 from suite.mailpilot.strings import STRINGS as MP
+from suite.moreinfo.strings import STRINGS as MI
 from suite.slidepilot.strings import SAMPLE_OUTLINE
 from suite.slidepilot.strings import STRINGS as SL
 
 TABLES = {"common": COMMON, "datapilot": DP, "bipilot": BI, "docpilot": DOC, "slidepilot": SL, "fraudpilot": FR,
-          "icepilot": ICE, "mailpilot": MP}
+          "icepilot": ICE, "mailpilot": MP, "moreinfo": MI}
 
 
 def fields(text):

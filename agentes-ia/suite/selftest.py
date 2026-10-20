@@ -117,7 +117,32 @@ def _mailpilot(out):
         import win32timezone  # noqa: F401
 
 
-CHECKS = {"datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,
+def _moreinfo(out):
+    from openpyxl import Workbook, load_workbook
+    from PIL import Image
+
+    from .moreinfo import logic
+
+    shots = []
+    for n, section in enumerate(("Transactions", "Profile", "Cards", "Claim information")):
+        path = out / f"shot{n}.png"
+        Image.new("RGB", (900, 400 + 100 * n), (210, 225, 240)).save(path)
+        shots.append(logic.Shot(section, str(path), f"caption {n}"))
+    share = out / "share"
+    share.mkdir()
+    (share / "TEST1,MOREINFO.pdf").write_bytes(b"%PDF")
+    result = logic.create_package("TEST1", "selftest", shots, [shots[0].path], [share], out / "work",
+                                  use_word=False)
+    assert sorted(p.name for p in result["copied"]) == ["TEST1,MOREINFO1.pdf", "TEST1,MOREINFO2.pdf"], result
+    wb = Workbook()
+    wb.active.append(["Date", "Amount"])
+    wb.save(out / "txns.xlsx")
+    result = logic.create_package("TEST2", "selftest", shots[1:], [], [share], out / "work", mode="excel",
+                                  excel_source=str(out / "txns.xlsx"))
+    assert "MoreInfo" in load_workbook(result["created"][0]).sheetnames
+
+
+CHECKS = {"moreinfo": _moreinfo, "datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,
           "fraudpilot": _fraudpilot, "icepilot": _icepilot, "mailpilot": _mailpilot}
 
 

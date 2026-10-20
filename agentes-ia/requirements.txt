@@ -6,4 +6,5 @@ python-pptx>=1.0
 pillow>=10.1
 sv-ttk>=2.6
 pyspellchecker>=0.8
+xlrd>=2.0
 pywin32>=306; sys_platform == "win32"

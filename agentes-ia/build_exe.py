@@ -23,6 +23,7 @@ APPS = {  # nombre: (texto del icono, color)
     "FraudPilot": ("FR", "#7B1E3A"),
     "IcePilot": ("IB", "#6D28D9"),
     "MailPilot": ("MP", "#0F6CBD"),
+    "MoreInfoPilot": ("MI", "#0E7490"),
 }
 # Plantillas y temas que las librerías cargan desde sus propios archivos.
 DATA_PACKAGES = ("sv_ttk", "docx", "pptx")
@@ -33,7 +34,7 @@ EXCLUDES = ("matplotlib", "scipy", "IPython", "pytest", "notebook", "PyQt5", "Py
 # MailPilot: diccionarios del corrector (solo los tres idiomas de la suite) y el módulo de zonas horarias que
 # pywin32 carga al convertir las fechas de Outlook.
 SPELL_LANGS = {"MailPilot": ("en", "es", "fr")}
-HIDDEN_IMPORTS = {"MailPilot": ("win32timezone",)}
+HIDDEN_IMPORTS = {"MailPilot": ("win32timezone",), "MoreInfoPilot": ("win32timezone",)}
 
 
 def extra_args(name):

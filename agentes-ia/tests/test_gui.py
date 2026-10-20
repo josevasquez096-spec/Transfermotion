@@ -21,6 +21,7 @@ from suite.icepilot import games as ice_games  # noqa: E402
 from suite.icepilot.app import IcePilot  # noqa: E402
 from suite.icepilot.build import build_html  # noqa: E402
 from suite.mailpilot.app import MailPilot  # noqa: E402
+from suite.moreinfo.app import MoreInfoPilot  # noqa: E402
 from suite.slidepilot.app import SlidePilot  # noqa: E402
 from suite.slidepilot.strings import SAMPLE_OUTLINE  # noqa: E402
 
@@ -53,6 +54,8 @@ def exercise(app):
         app.gen_letter()
     elif isinstance(app, MailPilot):
         exercise_mailpilot(app)
+    elif isinstance(app, MoreInfoPilot):
+        exercise_moreinfo(app)
     elif isinstance(app, IcePilot):
         for game in ice_games.GAMES:
             app.select_game(game)
@@ -109,7 +112,38 @@ def exercise_mailpilot(app):
             setattr(messagebox, name, fn)
 
 
-@pytest.mark.parametrize("cls", [DataPilot, BIPilot, DocPilot, SlidePilot, FraudPilot, IcePilot, MailPilot])
+def exercise_moreinfo(app):
+    import tempfile
+    from pathlib import Path
+    from tkinter import messagebox
+
+    from PIL import Image
+
+    tmp = Path(tempfile.mkdtemp())
+    for n in range(3):
+        Image.new("RGB", (800, 400), (200, 200, 230)).save(tmp / f"s{n}.png")
+        app.section.set_key(("Transactions", "Profile", "Cards")[n])
+        app.add_shot(tmp / f"s{n}.png")
+    app.tree.selection_set("1")
+    app.update()
+    app.prefs.update(folders=[str(tmp / "share")], work=str(tmp / "work"), use_word=False)
+    app.case_var.set("12345")
+    saved = messagebox.showinfo, messagebox.showwarning
+    messagebox.showinfo = messagebox.showwarning = lambda *a, **k: None
+    try:
+        app.create()
+        while app._busy:
+            app.update()
+            app.after(50)
+    finally:
+        messagebox.showinfo, messagebox.showwarning = saved
+    assert (tmp / "share" / "12345,MOREINFO.pdf").exists()
+    app.mode.set("excel")
+    app._mode_changed()
+
+
+@pytest.mark.parametrize("cls", [DataPilot, BIPilot, DocPilot, SlidePilot, FraudPilot, IcePilot, MailPilot,
+                                 MoreInfoPilot])
 def test_app_starts_and_switches_language(cls):
     app = cls()
     try:
