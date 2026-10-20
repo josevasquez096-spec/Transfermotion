@@ -4,3 +4,4 @@ public/mediapipe/
 .env
 .env.local
 .env.*.local
+descargas/
