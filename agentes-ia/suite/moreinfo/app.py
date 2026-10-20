@@ -10,12 +10,12 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from PIL import Image
 
-from ..ui import Choice, PilotApp, TextBox, open_path
+from ..ui import PilotApp, TextBox, open_path
 from . import logic
 from .strings import STRINGS
 
 DEFAULTS = {"folders": [], "per_case": False, "use_word": True, "keep_docx": False, "base": logic.DEFAULT_BASE,
-            "sheet": "MoreInfo", "work": "", "analyst": ""}
+            "work": "", "analyst": "", "sections": []}
 POLL_MS = 800
 
 
@@ -126,8 +126,9 @@ class MoreInfoPilot(PilotApp):
         bar = ttk.Frame(left)
         bar.pack(fill="x")
         self.lbl(bar, "section").pack(side="left")
-        self.section = Choice(self, bar, logic.SECTIONS, width=20, translate=False)
+        self.section = ttk.Combobox(bar, state="readonly", width=24)
         self.section.pack(side="left", padx=6)
+        self.btn(bar, "add_section", self.add_section, width=3).pack(side="left", padx=(0, 6))
         self.btn(bar, "paste", self.paste, accent=True).pack(side="left")
         self.btn(bar, "add_images", self.add_images).pack(side="left", padx=6)
         self.auto_var = tk.BooleanVar(value=False)
@@ -161,8 +162,6 @@ class MoreInfoPilot(PilotApp):
         state = ["!disabled"] if excel else ["disabled"]
         self.excel_entry.state(state)
         self.excel_btn.state(state)
-        if excel and self.section.key == "Transactions":
-            self.section.set_key("Profile")
 
     def pick_excel(self):
         path = filedialog.askopenfilename(parent=self, filetypes=[("Excel", "*.xlsx *.xlsm *.xls"),
@@ -177,16 +176,27 @@ class MoreInfoPilot(PilotApp):
         image.convert("RGB").save(path)
         return path
 
+    @property
+    def current_section(self):
+        return self.section.get()
+
+    def _need_section(self):
+        """Las secciones las define el usuario: sin ninguna, se le pide crear la primera."""
+        if self.current_section:
+            return True
+        messagebox.showinfo(self.APP_NAME, self.t("need_section"), parent=self)
+        return self.add_section()
+
     def add_shot(self, path, section=None):
         with Image.open(path) as img:
             size = f"{img.width}×{img.height}"
-        self.shots.append({"shot": logic.Shot(section or self.section.key, str(path)), "size": size})
+        self.shots.append({"shot": logic.Shot(section or self.current_section, str(path)), "size": size})
         self._fill()
 
     def _fill(self, select=None):
         self.tree.delete(*self.tree.get_children())
-        # se mantienen juntas las capturas de cada sección, en el orden de SECTIONS
-        order = {s: n for n, s in enumerate(logic.SECTIONS)}
+        # se mantienen juntas las capturas de cada sección, en el orden de las secciones guardadas
+        order = {s: n for n, s in enumerate(self.prefs["sections"])}
         self.shots.sort(key=lambda x: order.get(x["shot"].section, 99))
         for n, item in enumerate(self.shots):
             shot = item["shot"]
@@ -197,6 +207,8 @@ class MoreInfoPilot(PilotApp):
         self.show_preview()
 
     def paste(self):
+        if not self._need_section():
+            return
         try:
             images = grab_clipboard()
         except Exception as exc:  # p. ej. Linux sin xclip
@@ -208,7 +220,7 @@ class MoreInfoPilot(PilotApp):
         for image in images:
             self.add_shot(self._store(image))
         self._last_clip = self._fingerprint(images[-1])
-        self.status(self.t("added_n", n=len(images), section=self.section.key))
+        self.status(self.t("added_n", n=len(images), section=self.current_section))
 
     def _ctrl_v(self, event):
         if isinstance(event.widget, (tk.Entry, ttk.Entry, tk.Text)):
@@ -223,7 +235,7 @@ class MoreInfoPilot(PilotApp):
     def _poll_clipboard(self):
         """Con «Auto-add», cada captura nueva del portapapeles se añade sola a la sección elegida."""
         try:
-            if self.auto_var.get():
+            if self.auto_var.get() and self.current_section:
                 images = grab_clipboard()
                 if images:
                     mark = self._fingerprint(images[-1])
@@ -233,7 +245,7 @@ class MoreInfoPilot(PilotApp):
                         self._last_clip = mark
                         for image in images:
                             self.add_shot(self._store(image))
-                        self.status(self.t("added_n", n=len(images), section=self.section.key))
+                        self.status(self.t("added_n", n=len(images), section=self.current_section))
             else:
                 self._last_clip = None
         except Exception:  # el portapapeles puede estar ocupado por otro programa
@@ -241,6 +253,8 @@ class MoreInfoPilot(PilotApp):
         self.after(POLL_MS, self._poll_clipboard)
 
     def add_images(self):
+        if not self._need_section():
+            return
         paths = filedialog.askopenfilenames(parent=self, filetypes=[
             ("Images", " ".join(f"*{e}" for e in logic.IMAGE_TYPES)), (self.t("ft_all"), "*.*")])
         for path in paths:
@@ -337,13 +351,13 @@ class MoreInfoPilot(PilotApp):
         def work():
             return logic.create_package(case, p["analyst"], shots, extras, folders, p["work"], mode, excel,
                                         p["base"] or logic.DEFAULT_BASE, p["per_case"], p["use_word"],
-                                        p["keep_docx"], p["sheet"] or "MoreInfo")
+                                        p["keep_docx"])
 
         self.run_task(work, self._created)
 
     def _created(self, r):
         t = self.t
-        lines = [t("engine_" + r["engine"], sheet=self.prefs["sheet"]), "", t("created")]
+        lines = [t("engine_" + r["engine"], sheet=logic.EXCEL_SHEET), "", t("created")]
         lines += [f"  • {p}" for p in r["created"]]
         if r["copied"]:
             lines += [t("copied_to")] + [f"  • {p}" for p in r["copied"]]
@@ -375,6 +389,22 @@ class MoreInfoPilot(PilotApp):
         self.btn(fb, "remove", self.remove_folder).pack(fill="x")
         self._fill_folders()
 
+        sections = self.lframe(tab, "sections_box", padding=8)
+        sections.pack(fill="x", pady=(10, 0))
+        self.section_list = tk.Listbox(sections, height=6)
+        self.section_list.pack(side="left", fill="x", expand=True)
+        sb = ttk.Frame(sections)
+        sb.pack(side="left", padx=6)
+        self.btn(sb, "section_add", self.add_section).pack(fill="x")
+        self.btn(sb, "section_rename", self.rename_section).pack(fill="x", pady=4)
+        self.btn(sb, "remove", self.remove_section).pack(fill="x")
+        moves = ttk.Frame(sb)
+        moves.pack(fill="x", pady=(4, 0))
+        self.btn(moves, "up", lambda: self.move_section(-1), width=3).pack(side="left", expand=True, fill="x")
+        self.btn(moves, "down", lambda: self.move_section(1), width=3).pack(side="left", expand=True, fill="x")
+        self.lbl(tab, "sections_hint", hint=True).pack(anchor="w")
+        self._fill_sections()
+
         opts = ttk.Frame(tab)
         opts.pack(fill="x", pady=10)
         self.per_case_var = tk.BooleanVar(value=self.prefs["per_case"])
@@ -387,12 +417,87 @@ class MoreInfoPilot(PilotApp):
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
         self.base_var = tk.StringVar(value=self.prefs["base"])
-        self.sheet_var = tk.StringVar(value=self.prefs["sheet"])
         self.work_var = tk.StringVar(value=self.prefs["work"])
         self.field(form, "base_name", ttk.Entry(form, textvariable=self.base_var, width=20), 0, sticky="w")
-        self.field(form, "sheet_name", ttk.Entry(form, textvariable=self.sheet_var, width=20), 1, sticky="w")
         self.field(form, "work_folder", ttk.Entry(form, textvariable=self.work_var), 2)
         self.btn(tab, "save_settings", self.save_settings, accent=True).pack(anchor="w", pady=10)
+
+    # ------------------------------------------------------------ sections (saved, defined by the user)
+    def _fill_sections(self, select=None):
+        names = self.prefs["sections"]
+        self.section_list.delete(0, "end")
+        for name in names:
+            self.section_list.insert("end", name)
+        current = self.section.get()
+        self.section["values"] = names
+        if select in names:
+            self.section.set(select)
+        elif current not in names:
+            self.section.set(names[0] if names else "")
+        if select in names:
+            self.section_list.selection_set(names.index(select))
+
+    def _ask_section(self, initial=""):
+        name = simpledialog.askstring(self.APP_NAME, self.t("section_prompt"), initialvalue=initial, parent=self)
+        name = " ".join((name or "").split())
+        if name and name.lower() in {s.lower() for s in self.prefs["sections"]} and name != initial:
+            messagebox.showwarning(self.APP_NAME, self.t("section_exists", name=name), parent=self)
+            return None
+        return name or None
+
+    def add_section(self):
+        name = self._ask_section()
+        if not name:
+            return False
+        self.prefs["sections"].append(name)
+        self.save_prefs()
+        self._fill_sections(select=name)
+        return True
+
+    def _selected_section(self):
+        sel = self.section_list.curselection()
+        if not sel:
+            messagebox.showinfo(self.APP_NAME, self.t("need_section_selection"), parent=self)
+            return None
+        return sel[0]
+
+    def rename_section(self):
+        index = self._selected_section()
+        if index is None:
+            return
+        old = self.prefs["sections"][index]
+        new = self._ask_section(old)
+        if not new or new == old:
+            return
+        self.prefs["sections"][index] = new
+        for item in self.shots:  # las capturas ya añadidas cambian de nombre de sección también
+            if item["shot"].section == old:
+                item["shot"].section = new
+        self.save_prefs()
+        self._fill_sections(select=new)
+        self._fill()
+
+    def remove_section(self):
+        index = self._selected_section()
+        if index is None:
+            return
+        name = self.prefs["sections"][index]
+        if any(item["shot"].section == name for item in self.shots):
+            messagebox.showwarning(self.APP_NAME, self.t("section_in_use", name=name), parent=self)
+            return
+        del self.prefs["sections"][index]
+        self.save_prefs()
+        self._fill_sections()
+
+    def move_section(self, step):
+        index = self._selected_section()
+        names = self.prefs["sections"]
+        if index is None or not 0 <= index + step < len(names):
+            return
+        names[index], names[index + step] = names[index + step], names[index]
+        self.save_prefs()
+        self._fill_sections(select=names[index + step])
+        self._fill()
 
     def _fill_folders(self):
         self.folder_list.delete(0, "end")
@@ -423,7 +528,6 @@ class MoreInfoPilot(PilotApp):
         base = logic.clean_case(self.base_var.get()) or logic.DEFAULT_BASE
         self.prefs.update(per_case=bool(self.per_case_var.get()), use_word=bool(self.use_word_var.get()),
                           keep_docx=bool(self.keep_docx_var.get()), base=base,
-                          sheet=self.sheet_var.get().strip()[:31] or "MoreInfo",
                           work=self.work_var.get().strip() or self.prefs["work"])
         self.base_var.set(base)
         self.save_prefs()

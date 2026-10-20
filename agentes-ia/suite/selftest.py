@@ -139,7 +139,7 @@ def _moreinfo(out):
     wb.save(out / "txns.xlsx")
     result = logic.create_package("TEST2", "selftest", shots[1:], [], [share], out / "work", mode="excel",
                                   excel_source=str(out / "txns.xlsx"))
-    assert "MoreInfo" in load_workbook(result["created"][0]).sheetnames
+    assert "Additional info" in load_workbook(result["created"][0]).sheetnames
 
 
 CHECKS = {"moreinfo": _moreinfo, "datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,

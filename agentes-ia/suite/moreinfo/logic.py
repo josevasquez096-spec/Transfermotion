@@ -4,8 +4,9 @@ Two outputs:
 - Word/PDF: every screenshot goes into a Word document (case header, section titles, captions) that is saved as
   "CASE,MOREINFO.pdf". The PDF is made with Microsoft Word when it is installed (best quality) or with the
   built-in renderer otherwise, so it also works on PCs without Word and without internet.
-- Excel: the analyst's downloaded transaction file (.xlsx/.xlsm/.xls) gets a new sheet with the profile, card and
-  claim screenshots, saved as "CASE,MOREINFO.xlsx".
+- Excel: the analyst's downloaded transaction file (.xlsx/.xlsm/.xls) gets a new "Additional info" tab with the
+  screenshots, saved as "CASE,MOREINFO.xlsx".
+Sections are free names chosen by the analyst; the screenshots are grouped by section in the order given.
 
 Files are numbered when the case already has one in any destination folder: CASE,MOREINFO.pdf, CASE,MOREINFO1.pdf,
 CASE,MOREINFO2.pdf… Extra documents of the case get the next numbers too.
@@ -20,8 +21,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-SECTIONS = ("Transactions", "Customer information", "Cards", "Profile", "Claim information", "Other")
-EXCEL_SECTIONS = ("Profile", "Cards", "Claim information", "Customer information", "Other")
+EXCEL_SHEET = "Additional info"  # pestaña que se añade al Excel de transacciones
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff")
 EXCEL_TYPES = (".xlsx", ".xlsm", ".xls")
 DEFAULT_BASE = "MOREINFO"
@@ -200,7 +200,7 @@ def image_to_pdf(src, dst):
 
 # ---------------------------------------------------------------- Excel
 
-def build_excel(src, dst, case, analyst, shots, sheet="MoreInfo"):
+def build_excel(src, dst, case, analyst, shots, sheet=EXCEL_SHEET):
     """Copies the transaction file and adds a sheet with the screenshots. Returns the saved path."""
     from openpyxl import Workbook, load_workbook
     from openpyxl.drawing.image import Image as XLImage
@@ -213,11 +213,11 @@ def build_excel(src, dst, case, analyst, shots, sheet="MoreInfo"):
         wb = load_workbook(src, keep_vba=src.suffix.lower() == ".xlsm")
     if wb is None:
         wb = Workbook()
-    name, n = sheet[:31] or "MoreInfo", 2
+    name, n = sheet[:31] or EXCEL_SHEET, 2
     while name in wb.sheetnames:
         name, n = f"{sheet[:28]} {n}", n + 1
     ws = wb.create_sheet(name)
-    ws["A1"] = f"MoreInfo – Case {case}"
+    ws["A1"] = f"{name} – Case {case}"
     ws["A1"].font = Font(bold=True, size=14, color="0E7490")
     ws["A2"] = f"Prepared by: {analyst or '-'}    Date: {datetime.now():%Y-%m-%d %H:%M}"
     row, current = 4, None
@@ -287,7 +287,7 @@ def destinations(folders, case, per_case_folder):
 
 
 def create_package(case, analyst, shots, extras, folders, work_dir, mode="pdf", excel_source=None,
-                   base=DEFAULT_BASE, per_case_folder=False, use_word=True, keep_docx=False, sheet="MoreInfo"):
+                   base=DEFAULT_BASE, per_case_folder=False, use_word=True, keep_docx=False, sheet=EXCEL_SHEET):
     """Builds the MoreInfo file (+ numbered extras) in work_dir and copies everything to the folders.
 
     Returns a dict with the created files, copied paths, errors and the PDF engine used."""

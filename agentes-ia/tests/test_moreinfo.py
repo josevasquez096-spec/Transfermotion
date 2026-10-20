@@ -71,11 +71,12 @@ def test_excel_package_adds_tab(tmp_path):
     src = tmp_path / "txns.xlsx"
     wb.save(src)
     result = logic.create_package("999", "Ana", shots(tmp_path)[2:], [], [tmp_path / "out"], tmp_path / "work",
-                                  mode="excel", excel_source=str(src), sheet="Evidence")
+                                  mode="excel", excel_source=str(src))
     book = load_workbook(result["created"][0])
     assert result["created"][0].name == "999,MOREINFO.xlsx"
-    assert book.sheetnames == ["Transactions", "Evidence"] and book["Transactions"]["C2"].value == 120.5
-    assert len(book["Evidence"]._images) == 3 and book["Evidence"]["A1"].value == "MoreInfo – Case 999"
+    assert book.sheetnames == ["Transactions", "Additional info"] and book["Transactions"]["C2"].value == 120.5
+    assert len(book["Additional info"]._images) == 3 and book["Additional info"]["A1"].value == \
+        "Additional info – Case 999"
 
 
 def test_validation(tmp_path):

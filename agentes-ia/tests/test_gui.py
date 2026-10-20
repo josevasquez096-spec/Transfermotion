@@ -122,7 +122,8 @@ def exercise_moreinfo(app):
     tmp = Path(tempfile.mkdtemp())
     for n in range(3):
         Image.new("RGB", (800, 400), (200, 200, 230)).save(tmp / f"s{n}.png")
-        app.section.set_key(("Transactions", "Profile", "Cards")[n])
+        app.prefs["sections"] = ["Customer profile", "Cards", "Claim"]
+        app._fill_sections(select=app.prefs["sections"][n])
         app.add_shot(tmp / f"s{n}.png")
     app.tree.selection_set("1")
     app.update()
