@@ -21,6 +21,7 @@ APPS = {  # nombre: (texto del icono, color)
     "DocPilot": ("W", "#2B579A"),
     "SlidePilot": ("P", "#C43E1C"),
     "FraudPilot": ("FR", "#7B1E3A"),
+    "IcePilot": ("IB", "#6D28D9"),
 }
 # Plantillas y temas que las librerías cargan desde sus propios archivos.
 DATA_PACKAGES = ("sv_ttk", "docx", "pptx")

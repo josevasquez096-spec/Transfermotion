@@ -8,11 +8,13 @@ from suite.docpilot.strings import STRINGS as DOC
 from suite.fraudpilot import logic as fraud
 from suite.fraudpilot.strings import LETTERS
 from suite.fraudpilot.strings import STRINGS as FR
+from suite.icepilot.strings import STRINGS as ICE
 from suite.i18n import COMMON, LANGS, Translator
 from suite.slidepilot.strings import SAMPLE_OUTLINE
 from suite.slidepilot.strings import STRINGS as SL
 
-TABLES = {"common": COMMON, "datapilot": DP, "bipilot": BI, "docpilot": DOC, "slidepilot": SL, "fraudpilot": FR}
+TABLES = {"common": COMMON, "datapilot": DP, "bipilot": BI, "docpilot": DOC, "slidepilot": SL, "fraudpilot": FR,
+          "icepilot": ICE}
 
 
 def fields(text):

@@ -113,6 +113,7 @@ COMMON = {
     "ft_pptx": ("Presentaciones de PowerPoint", "PowerPoint presentations", "Présentations PowerPoint"),
     "ft_text": ("Texto", "Text", "Texte"),
     "ft_json": ("JSON", "JSON", "JSON"),
+    "ft_html": ("Página web (HTML)", "Web page (HTML)", "Page web (HTML)"),
     "ft_all": ("Todos los archivos", "All files", "Tous les fichiers"),
     "err_no_key": (
         "Esta función usa IA. Abre «⚙ Configuración IA» y pega tu clave de API de Anthropic.",

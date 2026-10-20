@@ -74,8 +74,26 @@ def _fraudpilot(out):
     markup_to_docx("# Test\nok", out / "letter.docx")
 
 
+def _icepilot(out):
+    import re
+
+    from .icepilot import content, games, office
+    from .icepilot.build import build_html
+
+    for game, spec in games.GAMES.items():
+        cfg = games.new_config(game, "es")
+        cfg["items"] = content.pack_items("fraud", game, "es", spec["columns"])
+        page, _ = build_html(cfg)
+        external = set(re.findall(r"https?://[^\s\"'<>)]+", page)) - {"http://www.w3.org/2000/svg"}
+        assert not external, external
+        (out / f"{game}.html").write_text(page, encoding="utf-8")
+        office.build_docx(cfg, out / f"{game}.docx")
+        if spec["pptx"]:
+            office.build_pptx(cfg, out / f"{game}.pptx")
+
+
 CHECKS = {"datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,
-          "fraudpilot": _fraudpilot}
+          "fraudpilot": _fraudpilot, "icepilot": _icepilot}
 
 
 def run(app):

@@ -1,0 +1,260 @@
+STRINGS = {
+    "tagline": ("Generador de icebreakers y juegos para reuniones en Teams · 100 % sin internet",
+                "Icebreaker and game generator for Teams meetings · 100% offline",
+                "Générateur de brise-glace et de jeux pour réunions Teams · 100 % hors ligne"),
+    "tab_game": ("🎮 Juego y contenido", "🎮 Game & content", "🎮 Jeu et contenu"),
+    "tab_custom": ("🎨 Personalizar", "🎨 Customize", "🎨 Personnaliser"),
+    "tab_help": ("ℹ️ Uso en Teams", "ℹ️ Using it in Teams", "ℹ️ Utilisation dans Teams"),
+    "games": ("Tipo de juego", "Game type", "Type de jeu"),
+    "g_quiz": ("Quiz tipo Kahoot", "Kahoot-style quiz", "Quiz façon Kahoot"),
+    "g_truefalse": ("Verdadero o falso", "True or false", "Vrai ou faux"),
+    "g_trivia": ("Trivia por categorías", "Category trivia board", "Trivia par catégories"),
+    "g_hangman": ("Ahorcado", "Hangman", "Pendu"),
+    "g_emoji": ("Adivina con emojis", "Guess the emojis", "Devine les emojis"),
+    "g_scramble": ("Palabras desordenadas", "Word scramble", "Mots mélangés"),
+    "g_snakes": ("Serpientes y escaleras", "Snakes and ladders", "Serpents et échelles"),
+    "g_wheel": ("Ruleta de preguntas", "Question wheel", "Roue des questions"),
+    "g_bingo": ("Bingo", "Bingo", "Bingo"),
+    "g_wordsearch": ("Sopa de letras", "Word search", "Mots mêlés"),
+    "g_truths": ("Dos verdades y una mentira", "Two truths and a lie", "Deux vérités et un mensonge"),
+    "g_wouldrather": ("¿Qué prefieres?", "Would you rather?", "Tu préfères ?"),
+    "d_quiz": ("Preguntas con 2 a 4 opciones de colores, cuenta atrás, explicación y marcador por equipos. "
+               "Sin opciones, la pregunta es abierta y la columna «Correcta» lleva la respuesta.",
+               "Questions with 2 to 4 colored options, countdown, explanation and team scoreboard. "
+               "Without options the question is open and the “Correct” column holds the answer.",
+               "Questions à 2-4 options colorées, compte à rebours, explication et scores par équipe. "
+               "Sans options, la question est ouverte et la colonne « Correcte » contient la réponse."),
+    "d_truefalse": ("Afirmaciones para responder «verdadero» o «falso» (escribe V o F), con explicación.",
+                    "Statements to answer “true” or “false” (type T or F), with an explanation.",
+                    "Affirmations à juger « vrai » ou « faux » (tapez V ou F), avec explication."),
+    "d_trivia": ("Tablero de hasta 6 categorías con valores (100, 200, 300…). Los equipos eligen casilla.",
+                 "Board with up to 6 categories and values (100, 200, 300…). Teams pick a square.",
+                 "Tableau de 6 catégories maximum avec des valeurs (100, 200, 300…). Les équipes choisissent."),
+    "d_hangman": ("Palabras o frases con pista; teclado en pantalla y físico. Ideal para conceptos de fraude.",
+                  "Words or phrases with a hint; on-screen and physical keyboard. Great for fraud concepts.",
+                  "Mots ou phrases avec indice ; clavier à l'écran et physique. Idéal pour les notions de fraude."),
+    "d_emoji": ("Una combinación de emojis representa una frase, concepto o película.",
+                "A combination of emojis stands for a phrase, concept or movie.",
+                "Une combinaison d'emojis représente une phrase, un concept ou un film."),
+    "d_scramble": ("Las letras de cada palabra se desordenan solas; con pista y temporizador.",
+                   "The letters of each word are scrambled automatically; with hint and timer.",
+                   "Les lettres de chaque mot sont mélangées automatiquement ; avec indice et minuteur."),
+    "d_snakes": ("Tablero con dado para 2 a 8 equipos. Modos: solo dado, pregunta para tirar o pregunta al caer "
+                 "en una escalera o serpiente.",
+                 "Board with a die for 2 to 8 teams. Modes: dice only, question to roll, or question when landing "
+                 "on a ladder or snake.",
+                 "Plateau avec dé pour 2 à 8 équipes. Modes : dé seul, question pour lancer, ou question sur une "
+                 "échelle ou un serpent."),
+    "d_wheel": ("Ruleta animada con preguntas rompehielos, temas o nombres de participantes.",
+                "Animated wheel with icebreaker questions, topics or participant names.",
+                "Roue animée avec des questions brise-glace, des thèmes ou des prénoms."),
+    "d_bingo": ("Un único archivo para todos: el moderador saca términos y cada jugador abre su cartón. "
+                "En Word se generan los cartones para imprimir o enviar.",
+                "One file for everyone: the host draws terms and each player opens their card. "
+                "Word export creates the cards to print or send.",
+                "Un seul fichier pour tous : l'animateur tire les termes et chaque joueur ouvre son carton. "
+                "L'export Word crée les cartons à imprimer ou envoyer."),
+    "d_wordsearch": ("Sopa de letras interactiva (o imprimible en Word con clave de respuestas).",
+                     "Interactive word search (or printable in Word with an answer key).",
+                     "Mots mêlés interactifs (ou imprimables dans Word avec corrigé)."),
+    "d_truths": ("Cada persona escribe tres afirmaciones; el grupo vota cuál es la mentira.",
+                 "Each person writes three statements; the group votes for the lie.",
+                 "Chacun écrit trois affirmations ; le groupe vote pour le mensonge."),
+    "d_wouldrather": ("Dilemas A o B con recuento de votos y resultados en porcentaje.",
+                      "A-or-B dilemmas with vote counting and percentage results.",
+                      "Dilemmes A ou B avec décompte des votes et résultats en pourcentage."),
+    "exports": ("Se puede generar como: {formats}", "Can be generated as: {formats}", "Formats disponibles : {formats}"),
+    "content": ("Contenido", "Content", "Contenu"),
+    "content_hint": ("Doble clic en una celda para editarla · Supr para borrar filas · también puedes importar un Excel.",
+                     "Double-click a cell to edit · Del to delete rows · you can also import an Excel file.",
+                     "Double-clic sur une cellule pour la modifier · Suppr pour effacer · import Excel possible."),
+    "add_row": ("➕ Fila", "➕ Row", "➕ Ligne"),
+    "del_row": ("🗑 Borrar", "🗑 Delete", "🗑 Supprimer"),
+    "up": ("⬆", "⬆", "⬆"),
+    "down": ("⬇", "⬇", "⬇"),
+    "edit_row": ("✏ Editar fila", "✏ Edit row", "✏ Modifier la ligne"),
+    "import": ("📥 Importar Excel/CSV…", "📥 Import Excel/CSV…", "📥 Importer Excel/CSV…"),
+    "export_template": ("📤 Exportar a Excel…", "📤 Export to Excel…", "📤 Exporter vers Excel…"),
+    "pack": ("Contenido de ejemplo", "Sample content", "Contenu d'exemple"),
+    "pack_fraud": ("Fraudes recurrentes", "Common frauds", "Fraudes courantes"),
+    "pack_team": ("Rompehielos de equipo", "Team icebreakers", "Brise-glace d'équipe"),
+    "load_pack": ("Cargar", "Load", "Charger"),
+    "replace_content": ("¿Reemplazar el contenido actual de la tabla?", "Replace the current table content?",
+                        "Remplacer le contenu actuel du tableau ?"),
+    "ai_content": ("✨ Crear contenido con IA…", "✨ Create content with AI…", "✨ Créer du contenu avec l'IA…"),
+    "ai_topic": ("Tema (por ejemplo: «fraudes con tarjeta para clientes mayores»)",
+                 "Topic (e.g. “card fraud for older customers”)", "Sujet (ex. : « fraude à la carte pour les seniors »)"),
+    "ai_count": ("Cantidad", "Count", "Nombre"),
+    "ai_note": ("La IA necesita internet. En la red del banco usa los ejemplos incluidos o importa tu Excel.",
+                "The AI needs internet. On the bank network use the included samples or import your Excel.",
+                "L'IA a besoin d'internet. Sur le réseau de la banque, utilisez les exemples ou importez votre Excel."),
+    "generate": ("Generar", "Generate", "Générer"),
+    "col_question": ("Pregunta", "Question", "Question"),
+    "col_a": ("Opción A", "Option A", "Option A"),
+    "col_b": ("Opción B", "Option B", "Option B"),
+    "col_c": ("Opción C", "Option C", "Option C"),
+    "col_d": ("Opción D", "Option D", "Option D"),
+    "col_correct": ("Correcta (A-D)", "Correct (A-D)", "Correcte (A-D)"),
+    "col_explain": ("Explicación", "Explanation", "Explication"),
+    "col_statement": ("Afirmación", "Statement", "Affirmation"),
+    "col_answer": ("Respuesta", "Answer", "Réponse"),
+    "col_category": ("Categoría", "Category", "Catégorie"),
+    "col_points": ("Puntos", "Points", "Points"),
+    "col_hint": ("Pista", "Hint", "Indice"),
+    "col_prompt": ("Emojis", "Emojis", "Emojis"),
+    "col_text": ("Pregunta / tema / nombre", "Question / topic / name", "Question / thème / prénom"),
+    "col_term": ("Término", "Term", "Terme"),
+    "col_word": ("Palabra", "Word", "Mot"),
+    "col_clue": ("Pista (opcional)", "Clue (optional)", "Indice (facultatif)"),
+    "col_person": ("Persona", "Person", "Personne"),
+    "col_s1": ("Afirmación 1", "Statement 1", "Affirmation 1"),
+    "col_s2": ("Afirmación 2", "Statement 2", "Affirmation 2"),
+    "col_s3": ("Afirmación 3", "Statement 3", "Affirmation 3"),
+    "col_lie": ("Mentira (1-3)", "Lie (1-3)", "Mensonge (1-3)"),
+    "look": ("Apariencia", "Look", "Apparence"),
+    "title": ("Título", "Title", "Titre"),
+    "subtitle": ("Subtítulo", "Subtitle", "Sous-titre"),
+    "emoji": ("Icono", "Icon", "Icône"),
+    "theme": ("Tema de color", "Color theme", "Thème de couleurs"),
+    "th_bank": ("Azul banco", "Bank blue", "Bleu banque"),
+    "th_purple": ("Morado", "Purple", "Violet"),
+    "th_teal": ("Verde azulado", "Teal", "Bleu-vert"),
+    "th_red": ("Rojo", "Red", "Rouge"),
+    "th_party": ("Fiesta", "Party", "Fête"),
+    "th_dark": ("Oscuro", "Dark", "Sombre"),
+    "primary": ("Color principal…", "Main color…", "Couleur principale…"),
+    "accent": ("Color de acento…", "Accent color…", "Couleur d'accent…"),
+    "reset_colors": ("Colores del tema", "Theme colors", "Couleurs du thème"),
+    "game_lang": ("Idioma del juego", "Game language", "Langue du jeu"),
+    "lang_es": ("Español", "Spanish", "Espagnol"),
+    "lang_en": ("Inglés", "English", "Anglais"),
+    "lang_fr": ("Francés", "French", "Français"),
+    "teams": ("Equipos (uno por línea, máximo 8)", "Teams (one per line, up to 8)", "Équipes (une par ligne, 8 max.)"),
+    "teams_off": ("Este juego no usa equipos.", "This game does not use teams.", "Ce jeu n'utilise pas d'équipes."),
+    "sound": ("Efectos de sonido", "Sound effects", "Effets sonores"),
+    "game_options": ("Opciones del juego", "Game options", "Options du jeu"),
+    "no_options": ("Este juego no tiene opciones adicionales.", "This game has no extra options.",
+                   "Ce jeu n'a pas d'options supplémentaires."),
+    "seed": ("Variante aleatoria", "Random variant", "Variante aléatoire"),
+    "reshuffle": ("🎲 Nueva variante", "🎲 New variant", "🎲 Nouvelle variante"),
+    "opt_seconds": ("Segundos por pregunta (0 = sin tiempo)", "Seconds per question (0 = no timer)",
+                    "Secondes par question (0 = sans minuteur)"),
+    "opt_points": ("Puntos por acierto", "Points per correct answer", "Points par bonne réponse"),
+    "opt_shuffle": ("Mezclar el orden", "Shuffle the order", "Mélanger l'ordre"),
+    "opt_shuffle_options": ("Mezclar las opciones", "Shuffle the options", "Mélanger les options"),
+    "opt_show_explain": ("Mostrar la explicación", "Show the explanation", "Afficher l'explication"),
+    "opt_negative": ("Restar puntos al fallar", "Subtract points for wrong answers", "Retirer des points en cas d'erreur"),
+    "opt_max_errors": ("Fallos permitidos", "Allowed misses", "Erreurs permises"),
+    "opt_cells": ("Casillas del tablero", "Board squares", "Cases du plateau"),
+    "opt_mode": ("Modo", "Mode", "Mode"),
+    "mode_dice": ("Solo dado", "Dice only", "Dé seul"),
+    "mode_question": ("Pregunta para lanzar", "Question to roll", "Question pour lancer"),
+    "mode_challenge": ("Pregunta en escaleras y serpientes", "Question on ladders and snakes",
+                       "Question sur échelles et serpents"),
+    "opt_snakes": ("Serpientes", "Snakes", "Serpents"),
+    "opt_ladders": ("Escaleras", "Ladders", "Échelles"),
+    "opt_exact_finish": ("Llegar a la meta con el número exacto", "Exact roll to finish", "Arriver pile sur la dernière case"),
+    "opt_six_again": ("Con un 6 se tira otra vez", "Roll again on a 6", "Rejouer sur un 6"),
+    "opt_remove": ("Quitar cada opción al salir", "Remove each entry once picked", "Retirer chaque entrée tirée"),
+    "opt_spin_seconds": ("Duración del giro (s)", "Spin duration (s)", "Durée de rotation (s)"),
+    "opt_size": ("Tamaño del cartón", "Card size", "Taille du carton"),
+    "opt_free": ("Casilla libre en el centro", "Free center square", "Case libre au centre"),
+    "opt_cards": ("Número de cartones", "Number of cards", "Nombre de cartons"),
+    "opt_win": ("Se gana con", "Win with", "Gagner avec"),
+    "win_line": ("Línea", "A line", "Une ligne"),
+    "win_full": ("Cartón lleno", "Full card", "Carton plein"),
+    "opt_diagonal": ("Palabras en diagonal", "Diagonal words", "Mots en diagonale"),
+    "opt_reverse": ("Palabras al revés", "Backwards words", "Mots à l'envers"),
+    "opt_use_clues": ("Mostrar pistas en lugar de palabras", "Show clues instead of words",
+                      "Afficher les indices au lieu des mots"),
+    "preview": ("▶ Probar en el navegador", "▶ Try it in the browser", "▶ Essayer dans le navigateur"),
+    "save_html": ("💾 Guardar juego HTML…", "💾 Save HTML game…", "💾 Enregistrer le jeu HTML…"),
+    "save_pptx": ("📊 PowerPoint…", "📊 PowerPoint…", "📊 PowerPoint…"),
+    "save_docx": ("📄 Word…", "📄 Word…", "📄 Word…"),
+    "open_project": ("📂 Abrir proyecto…", "📂 Open project…", "📂 Ouvrir un projet…"),
+    "save_project": ("🗂 Guardar proyecto…", "🗂 Save project…", "🗂 Enregistrer le projet…"),
+    "no_pptx": ("Este juego no se exporta a PowerPoint (usa el HTML o Word).",
+                "This game can't be exported to PowerPoint (use HTML or Word).",
+                "Ce jeu ne s'exporte pas vers PowerPoint (utilisez HTML ou Word)."),
+    "warnings_title": ("Revisa el contenido", "Check the content", "Vérifiez le contenu"),
+    "continue_anyway": ("¿Continuar de todos modos?", "Continue anyway?", "Continuer quand même ?"),
+    "w_empty": ("La tabla de contenido está vacía.", "The content table is empty.", "Le tableau de contenu est vide."),
+    "w_correct": ("Fila {n}: la respuesta correcta no es válida (usa A, B, C, D o el texto de la opción).",
+                  "Row {n}: the correct answer is not valid (use A, B, C, D or the option text).",
+                  "Ligne {n} : la bonne réponse n'est pas valide (A, B, C, D ou le texte de l'option)."),
+    "w_options": ("Fila {n}: hacen falta al menos dos opciones.", "Row {n}: at least two options are needed.",
+                  "Ligne {n} : il faut au moins deux options."),
+    "w_truefalse": ("Fila {n}: la respuesta debe ser V (verdadero) o F (falso).",
+                    "Row {n}: the answer must be T (true) or F (false).",
+                    "Ligne {n} : la réponse doit être V (vrai) ou F (faux)."),
+    "w_trivia_cats": ("Solo se usan las 6 primeras categorías.", "Only the first 6 categories are used.",
+                      "Seules les 6 premières catégories sont utilisées."),
+    "w_long": ("«{word}…» es muy largo para el ahorcado.", "“{word}…” is very long for hangman.",
+               "« {word}… » est très long pour le pendu."),
+    "w_snakes_questions": ("Este modo necesita preguntas; sin ellas se juega solo con el dado.",
+                           "This mode needs questions; without them it is dice only.",
+                           "Ce mode nécessite des questions ; sans elles, on joue au dé seul."),
+    "w_min": ("Hacen falta al menos {n} filas.", "At least {n} rows are needed.", "Il faut au moins {n} lignes."),
+    "w_bingo_terms": ("Un cartón necesita {need} términos y solo hay {have}.",
+                      "A card needs {need} terms and there are only {have}.",
+                      "Un carton nécessite {need} termes et il n'y en a que {have}."),
+    "w_bingo_unique": ("Solo se pudieron crear {n} cartones distintos: añade más términos.",
+                       "Only {n} different cards could be created: add more terms.",
+                       "Seuls {n} cartons différents ont pu être créés : ajoutez des termes."),
+    "w_wordsearch": ("No caben en la sopa: {words}. Aumenta el tamaño.", "Did not fit in the grid: {words}. Increase the size.",
+                     "N'ont pas tenu dans la grille : {words}. Augmentez la taille."),
+    "w_lie": ("Fila {n}: indica la mentira con 1, 2 o 3.", "Row {n}: mark the lie with 1, 2 or 3.",
+              "Ligne {n} : indiquez le mensonge avec 1, 2 ou 3."),
+    "w_teams": ("Serpientes y escaleras necesita al menos 2 equipos.", "Snakes and ladders needs at least 2 teams.",
+                "Serpents et échelles nécessite au moins 2 équipes."),
+    "imported": ("{n} filas importadas.", "{n} rows imported.", "{n} lignes importées."),
+    "project_loaded": ("Proyecto cargado.", "Project loaded.", "Projet chargé."),
+    "bad_project": ("El archivo no es un proyecto de IcePilot.", "The file is not an IcePilot project.",
+                    "Ce fichier n'est pas un projet IcePilot."),
+    "help_title": ("Cómo usar los juegos en una reunión de Teams", "How to use the games in a Teams meeting",
+                   "Utiliser les jeux dans une réunion Teams"),
+    "help_text": (
+        "1. Elige el juego, carga un contenido de ejemplo o escribe el tuyo (también desde Excel).\n"
+        "2. Personaliza título, colores, equipos y opciones. Pulsa «Probar en el navegador».\n"
+        "3. En la reunión: Compartir → Ventana → el navegador con el juego. Usa el botón de pantalla completa.\n"
+        "   Para oír los sonidos, activa «Incluir sonido del equipo» al compartir.\n"
+        "4. Los participantes responden por voz o en el chat; tú marcas qué equipos acertaron.\n"
+        "5. Bingo y sopa de letras: envía el archivo .html por el chat de Teams; cada persona lo abre en su PC.\n"
+        "6. PowerPoint: compártelo con PowerPoint Live; las respuestas están en las notas del orador.\n"
+        "7. Word: guía del moderador con todas las respuestas, cartones de bingo y versiones imprimibles.\n\n"
+        "🔒 Pensado para la red interna del banco\n"
+        "• Cada juego es un único archivo .html que se abre en Edge o Chrome sin instalar nada.\n"
+        "• No usa internet: no carga fuentes, imágenes ni scripts externos, y una política de seguridad integrada "
+        "bloquea cualquier conexión. Funciona desde una carpeta local o compartida.\n"
+        "• No guarda ni envía datos de los participantes.\n"
+        "• La IA (opcional) es la única función que necesita internet; todo lo demás funciona sin conexión.",
+        "1. Pick the game, load sample content or write your own (also from Excel).\n"
+        "2. Customize the title, colors, teams and options. Click “Try it in the browser”.\n"
+        "3. In the meeting: Share → Window → the browser with the game. Use the full-screen button.\n"
+        "   To hear the sounds, turn on “Include computer sound” when sharing.\n"
+        "4. Participants answer out loud or in the chat; you mark which teams got it right.\n"
+        "5. Bingo and word search: send the .html file in the Teams chat; each person opens it on their PC.\n"
+        "6. PowerPoint: share it with PowerPoint Live; the answers are in the speaker notes.\n"
+        "7. Word: host guide with all the answers, bingo cards and printable versions.\n\n"
+        "🔒 Designed for the bank's internal network\n"
+        "• Each game is a single .html file that opens in Edge or Chrome with nothing to install.\n"
+        "• It doesn't use the internet: no external fonts, images or scripts, and a built-in security policy "
+        "blocks any connection. It works from a local or shared folder.\n"
+        "• It doesn't store or send any participant data.\n"
+        "• The (optional) AI is the only feature that needs internet; everything else works offline.",
+        "1. Choisissez le jeu, chargez un contenu d'exemple ou écrivez le vôtre (aussi depuis Excel).\n"
+        "2. Personnalisez le titre, les couleurs, les équipes et les options. Cliquez sur « Essayer ».\n"
+        "3. En réunion : Partager → Fenêtre → le navigateur avec le jeu. Utilisez le bouton plein écran.\n"
+        "   Pour entendre les sons, activez « Inclure le son de l'ordinateur » lors du partage.\n"
+        "4. Les participants répondent à voix haute ou dans le chat ; vous indiquez les équipes gagnantes.\n"
+        "5. Bingo et mots mêlés : envoyez le fichier .html dans le chat Teams ; chacun l'ouvre sur son PC.\n"
+        "6. PowerPoint : partagez-le avec PowerPoint Live ; les réponses sont dans les notes de l'orateur.\n"
+        "7. Word : guide de l'animateur avec toutes les réponses, cartons de bingo et versions imprimables.\n\n"
+        "🔒 Conçu pour le réseau interne de la banque\n"
+        "• Chaque jeu est un fichier .html unique qui s'ouvre dans Edge ou Chrome sans installation.\n"
+        "• Il n'utilise pas internet : aucune police, image ni script externe, et une politique de sécurité intégrée "
+        "bloque toute connexion. Il fonctionne depuis un dossier local ou partagé.\n"
+        "• Il n'enregistre ni n'envoie aucune donnée des participants.\n"
+        "• L'IA (facultative) est la seule fonction qui nécessite internet ; tout le reste fonctionne hors ligne.",
+    ),
+}

@@ -16,6 +16,9 @@ from suite.bipilot.app import BIPilot  # noqa: E402
 from suite.datapilot.app import DataPilot  # noqa: E402
 from suite.docpilot.app import DocPilot  # noqa: E402
 from suite.fraudpilot.app import FraudPilot  # noqa: E402
+from suite.icepilot import games as ice_games  # noqa: E402
+from suite.icepilot.app import IcePilot  # noqa: E402
+from suite.icepilot.build import build_html  # noqa: E402
 from suite.slidepilot.app import SlidePilot  # noqa: E402
 from suite.slidepilot.strings import SAMPLE_OUTLINE  # noqa: E402
 
@@ -46,9 +49,17 @@ def exercise(app):
             app.batch_df, app._mapping())
         app._show_batch()
         app.gen_letter()
+    elif isinstance(app, IcePilot):
+        for game in ice_games.GAMES:
+            app.select_game(game)
+            app.nb.select(1)
+            app.update()
+            cfg = app.config()
+            assert cfg["items"], game
+            build_html(cfg)
 
 
-@pytest.mark.parametrize("cls", [DataPilot, BIPilot, DocPilot, SlidePilot, FraudPilot])
+@pytest.mark.parametrize("cls", [DataPilot, BIPilot, DocPilot, SlidePilot, FraudPilot, IcePilot])
 def test_app_starts_and_switches_language(cls):
     app = cls()
     try:

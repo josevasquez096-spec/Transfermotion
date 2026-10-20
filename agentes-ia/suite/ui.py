@@ -29,8 +29,10 @@ FILETYPES = {
     "pptx": ("ft_pptx", "*.pptx"),
     "text": ("ft_text", "*.txt *.md"),
     "json": ("ft_json", "*.json"),
+    "html": ("ft_html", "*.html *.htm"),
 }
-EXTENSIONS = {"excel": ".xlsx", "csv": ".csv", "word": ".docx", "pptx": ".pptx", "text": ".txt", "json": ".json"}
+EXTENSIONS = {"excel": ".xlsx", "csv": ".csv", "word": ".docx", "pptx": ".pptx", "text": ".txt", "json": ".json",
+              "html": ".html"}
 
 
 def _enable_dpi_awareness():
@@ -430,9 +432,10 @@ class SettingsDialog(tk.Toplevel):
 class Choice(ttk.Combobox):
     """Combobox de solo lectura cuyas opciones son claves traducibles."""
 
-    def __init__(self, app, parent, keys, labels=None, width=24, default=0):
+    def __init__(self, app, parent, keys, labels=None, width=24, default=0, translate=True):
         super().__init__(parent, state="readonly", width=width)
         self.app = app
+        self.translate = translate
         self.keys = list(keys)
         self.labels = list(labels or keys)
         self._index = default
@@ -440,7 +443,7 @@ class Choice(ttk.Combobox):
         app.tr_call(self._refresh)
 
     def _refresh(self):
-        self["values"] = [self.app.t(k) for k in self.labels]
+        self["values"] = [self.app.t(k) if self.translate else k for k in self.labels]
         if self.keys:
             self.current(min(self._index, len(self.keys) - 1))
 
@@ -566,3 +569,127 @@ class ScrollFrame(ttk.Frame):
 
     def _wheel(self, event):
         self.canvas.yview_scroll(int(-event.delta / 120) or (-1 if event.delta > 0 else 1), "units")
+
+
+class EditableTable(ttk.Frame):
+    """Tabla editable: doble clic edita una celda, Tab pasa a la siguiente, Supr borra las filas elegidas."""
+
+    def __init__(self, parent, height=14):
+        super().__init__(parent)
+        self.keys = []
+        self.tree = ttk.Treeview(self, show="headings", height=height, selectmode="extended")
+        ys = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        xs = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        ys.grid(row=0, column=1, sticky="ns")
+        xs.grid(row=1, column=0, sticky="ew")
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self._editor = None
+        self.tree.bind("<Double-1>", self._on_double)
+        self.tree.bind("<Delete>", lambda e: self.delete_selected())
+        self.tree.bind("<Return>", lambda e: self._edit_selected())
+
+    def set_columns(self, keys, labels, widths=None):
+        self._close_editor(commit=True)
+        rows = self.get_rows()
+        self.keys = list(keys)
+        self.tree["columns"] = self.keys
+        for i, key in enumerate(self.keys):
+            self.tree.heading(key, text=labels[i])
+            self.tree.column(key, width=(widths or {}).get(key, 160), stretch=True, minwidth=60)
+        self.set_rows(rows)
+
+    def relabel(self, labels):
+        for key, label in zip(self.keys, labels):
+            self.tree.heading(key, text=label)
+
+    def set_rows(self, rows):
+        self._close_editor(commit=False)
+        self.tree.delete(*self.tree.get_children())
+        for row in rows:
+            self.tree.insert("", "end", values=[str(row.get(k, "") or "") for k in self.keys])
+
+    def get_rows(self):
+        self._close_editor(commit=True)
+        return [{k: self.tree.set(iid, k) for k in self.keys} for iid in self.tree.get_children()]
+
+    def add_row(self, values=None):
+        iid = self.tree.insert("", "end", values=[(values or {}).get(k, "") for k in self.keys])
+        self.tree.selection_set(iid)
+        self.tree.see(iid)
+        self.after(50, lambda: self._begin_edit(iid, 0))
+        return iid
+
+    def delete_selected(self):
+        self._close_editor(commit=False)
+        for iid in self.tree.selection():
+            self.tree.delete(iid)
+
+    def move(self, delta):
+        for iid in (self.tree.selection() if delta < 0 else reversed(self.tree.selection())):
+            index = self.tree.index(iid)
+            self.tree.move(iid, "", max(0, index + delta))
+
+    def _on_double(self, event):
+        iid = self.tree.identify_row(event.y)
+        col = self.tree.identify_column(event.x)
+        if iid and col:
+            self._begin_edit(iid, int(col[1:]) - 1)
+
+    def _edit_selected(self):
+        sel = self.tree.selection()
+        if sel:
+            self._begin_edit(sel[0], 0)
+
+    def _begin_edit(self, iid, index):
+        self._close_editor(commit=True)
+        if not self.keys or index >= len(self.keys):
+            return
+        self.tree.see(iid)
+        self.update_idletasks()
+        box = self.tree.bbox(iid, self.keys[index])
+        if not box:
+            return
+        x, y, w, h = box
+        entry = ttk.Entry(self.tree)
+        entry.insert(0, self.tree.set(iid, self.keys[index]))
+        entry.select_range(0, "end")
+        entry.place(x=x, y=y, width=max(w, 120), height=h)
+        entry.focus_set()
+        self._editor = (entry, iid, index)
+        entry.bind("<Return>", lambda e: self._close_editor(commit=True))
+        entry.bind("<KP_Enter>", lambda e: self._close_editor(commit=True))
+        entry.bind("<Escape>", lambda e: self._close_editor(commit=False))
+        entry.bind("<Tab>", lambda e: self._next_cell(1))
+        entry.bind("<Shift-Tab>", lambda e: self._next_cell(-1))
+        entry.bind("<FocusOut>", lambda e: self._close_editor(commit=True))
+
+    def _next_cell(self, step):
+        if not self._editor:
+            return "break"
+        _, iid, index = self._editor
+        self._close_editor(commit=True)
+        index += step
+        rows = self.tree.get_children()
+        if index >= len(self.keys):
+            pos = rows.index(iid) + 1
+            iid = rows[pos] if pos < len(rows) else self.tree.insert("", "end", values=[""] * len(self.keys))
+            index = 0
+        elif index < 0:
+            index = len(self.keys) - 1
+        self._begin_edit(iid, index)
+        return "break"
+
+    def _close_editor(self, commit):
+        if not self._editor:
+            return
+        entry, iid, index = self._editor
+        self._editor = None
+        try:
+            if commit and self.tree.exists(iid):
+                self.tree.set(iid, self.keys[index], entry.get())
+            entry.destroy()
+        except tk.TclError:
+            pass

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="generator" content="IcePilot">
+<title>Prevención de fraudes</title>
+<style>:root{--primary:#0B3D91;--accent:#00A3E0;--bg:#EEF3FB;--text:#0F172A;--surface:#FFFFFF;--primary-soft:#DDE4F0;--cell-alt:#EEF1F7;--accent-a:rgba(0,163,224,0.22);--primary-a:rgba(11,61,145,0.18)}
+:root{--primary:#0B3D91;--accent:#00A3E0;--bg:#EEF3FB;--text:#0F172A;--surface:#fff;--muted:#64748b;
+--ok:#16a34a;--bad:#dc2626;--radius:18px;--shadow:0 10px 30px rgba(15,23,42,.12)}
+*{box-sizing:border-box}
+html{font-size:clamp(14px,1.05vw + 6px,24px)}
+body{margin:0;min-height:100vh;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--text);
+background:radial-gradient(circle at 15% 10%,var(--accent-a),transparent 40%),
+radial-gradient(circle at 85% 90%,var(--primary-a),transparent 45%),var(--bg);
+display:flex;flex-direction:column}
+body.dark{--surface:#1e293b;--muted:#94a3b8;--shadow:0 10px 30px rgba(0,0,0,.45)}
+.emoji,.big-emoji,.prompt.emoji,.token,.medal{font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.6rem 1.2rem;
+background:var(--primary);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.brand{display:flex;align-items:center;gap:.8rem;min-width:0}
+.brand .logo{font-size:2rem;line-height:1}
+.brand h1{margin:0;font-size:1.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand p{margin:0;opacity:.85;font-size:.8rem}
+.tools{display:flex;gap:.4rem}
+.tools button{background:rgba(255,255,255,.16);color:#fff;border:0;border-radius:10px;padding:.35rem .6rem;
+font-size:.95rem;cursor:pointer}
+.tools button:hover{background:rgba(255,255,255,.3)}
+main{flex:1;display:grid;grid-template-columns:1fr auto;gap:1rem;padding:1rem 1.2rem;min-height:0}
+#stage{min-width:0;display:flex;flex-direction:column}
+.screen{flex:1;display:flex;flex-direction:column;align-items:center;gap:.8rem;animation:fade .35s ease}
+[hidden]{display:none!important}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.4rem 1.8rem}
+.intro{text-align:center;max-width:46rem;margin:auto}
+.intro h2{font-size:2.1rem;margin:.3rem 0}
+.big-emoji{font-size:4.5rem;line-height:1.1}
+.muted{color:var(--muted)}
+.pill{display:inline-block;background:var(--primary-soft);color:var(--primary);
+border-radius:999px;padding:.25rem .9rem;font-weight:600;font-size:.9rem}
+body.dark .pill{color:var(--accent)}
+.row{display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap;align-items:center}
+.btn{border:0;border-radius:12px;padding:.65rem 1.2rem;font-size:1rem;font-weight:600;cursor:pointer;
+background:var(--surface);color:var(--text);box-shadow:0 2px 0 rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.08);
+transition:transform .08s}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.big{font-size:1.25rem;padding:.8rem 1.8rem}
+.btn:disabled{opacity:.45;cursor:default;transform:none}
+.mini{border:0;border-radius:8px;width:1.7rem;height:1.7rem;cursor:pointer;font-weight:700;
+background:rgba(127,127,127,.16);color:var(--text)}
+.qhead{width:100%;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.question{font-size:1.85rem;text-align:center;margin:.2rem 0;max-width:60rem;line-height:1.22}
+.after{display:flex;flex-direction:column;align-items:center;gap:.8rem;width:100%}
+.answer-box{background:var(--ok);color:#fff;font-size:1.6rem;font-weight:700;border-radius:14px;padding:.6rem 1.4rem;
+animation:pop .35s ease}
+.answer-box.bad{background:var(--bad)}
+.explain,.hint{background:var(--surface);border-left:6px solid var(--accent);border-radius:12px;padding:.7rem 1rem;
+max-width:56rem;font-size:1.05rem;box-shadow:var(--shadow)}
+@keyframes pop{0%{transform:scale(.7);opacity:0}70%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+.timer{position:relative;flex:0 0 14rem;height:2.2rem;border-radius:999px;background:rgba(127,127,127,.18);overflow:hidden}
+.timer-fill{position:absolute;inset:0 auto 0 0;width:100%;background:var(--accent);transition:width 1s linear}
+.timer-num{position:absolute;inset:0;display:grid;place-items:center;font-weight:800}
+.timer.done .timer-fill{background:var(--bad)}
+.award{display:flex;flex-direction:column;align-items:center;gap:.6rem}
+.award-q{margin:0;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}
+.chip{border:3px solid var(--team);background:var(--surface);color:var(--text);border-radius:999px;
+padding:.4rem 1rem;font-weight:700;cursor:pointer;font-size:1rem}
+.chip.on{background:var(--team);color:#fff}
+aside#score{width:15rem;align-self:start;position:sticky;top:1rem}
+aside#score h2{font-size:1rem;margin:0 0 .6rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.team{display:grid;grid-template-columns:1fr auto;align-items:center;gap:.2rem .5rem;background:var(--surface);
+border-left:8px solid var(--team);border-radius:12px;padding:.5rem .7rem;margin-bottom:.5rem;box-shadow:var(--shadow)}
+.team .tname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team .tscore{font-size:1.4rem;text-align:right}
+.team .adj{grid-column:1/-1;display:flex;gap:.3rem;justify-content:flex-end;opacity:.0;transition:opacity .2s}
+.team:hover .adj{opacity:1}
+.team.bump{animation:pop .4s ease}
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;z-index:50;
+animation:fade .2s ease;padding:1rem}
+.modal{background:var(--surface);color:var(--text);border-radius:var(--radius);box-shadow:var(--shadow);
+padding:1.4rem 1.8rem;max-width:min(64rem,94vw);max-height:92vh;overflow:auto;position:relative;
+display:flex;flex-direction:column;gap:.9rem;align-items:center}
+.modal .x{position:absolute;top:.5rem;right:.6rem}
+.modal ul{text-align:left;font-size:1.05rem;line-height:1.6}
+.podium{text-align:center;min-width:24rem;margin:auto}
+.ranking{list-style:none;padding:0;margin:1rem 0;display:flex;flex-direction:column;gap:.5rem}
+.ranking li{display:grid;grid-template-columns:3rem 1fr auto;align-items:center;gap:.6rem;font-size:1.4rem;
+border-left:10px solid var(--team);background:var(--surface);border-radius:12px;
+padding:.5rem 1rem;animation:pop .5s ease both}
+.ranking li:nth-child(1){font-size:1.8rem}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:100}
+footer{text-align:center;font-size:.7rem;color:var(--muted);padding:.3rem}
+@media (max-width:900px){main{grid-template-columns:1fr}aside#score{width:auto;position:static}}
+
+.options{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;width:100%;max-width:64rem}
+.options.n2{grid-template-columns:1fr 1fr}
+.option{display:flex;align-items:center;gap:.9rem;background:var(--opt);color:#fff;border-radius:16px;padding:.8rem 1.1rem;
+font-size:1.3rem;font-weight:700;min-height:4.2rem;box-shadow:0 5px 0 rgba(0,0,0,.2);transition:opacity .3s,transform .3s}
+.option .shape{font-size:1.8rem;width:2.4rem;text-align:center;opacity:.9}
+.option.wrong{opacity:.25;transform:scale(.97)}
+.option.right{outline:6px solid #fff;box-shadow:0 0 0 10px var(--ok),0 5px 0 rgba(0,0,0,.2);animation:pop .4s ease}
+.option.right::after{content:"✔";margin-left:auto;font-size:2rem}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo emoji">🏆</span>
+    <div><h1>Prevención de fraudes</h1><p>Rompehielos del equipo de Reclamaciones</p></div></div>
+  <div class="tools"><button id="btn-rules">📖</button><button id="btn-sound">🔊</button><button id="btn-full">⛶</button></div>
+</header>
+<main><div id="stage"></div><aside id="score" hidden></aside></main>
+<footer id="offline"></footer>
+<script type="application/json" id="game-data">{"type": "quiz", "lang": "es", "title": "Prevención de fraudes", "subtitle": "Rompehielos del equipo de Reclamaciones", "emoji": "🏆", "sound": true, "teams": ["Equipo Rojo", "Equipo Azul"], "team_colors": ["#E21B3C", "#1368CE", "#D89E00", "#26890C", "#8E44AD", "#E67E22", "#16A085", "#7F8C8D"], "tokens": ["🦊", "🐼", "🐸", "🐯", "🐧", "🦉", "🐙", "🦄"], "colors": {"primary": "#0B3D91", "accent": "#00A3E0"}, "dark": false, "options": {"seconds": 20, "points": 100, "shuffle": false, "shuffle_options": false, "show_explain": true}, "data": {"questions": [{"q": "Recibes un SMS del «banco» con un enlace para desbloquear tu cuenta. ¿Qué haces?", "options": ["Hago clic y pongo mis datos", "Respondo con mi número de cliente", "No hago clic y contacto al banco por sus canales oficiales", "Lo reenvío a mis contactos"], "correct": 2, "answer": "No hago clic y contacto al banco por sus canales oficiales", "explain": "Es smishing: el banco nunca envía enlaces para pedir claves. Usa siempre la app o el número oficial."}, {"q": "¿Qué es el vishing?", "options": ["Un fraude por llamada telefónica", "Un virus de impresora", "La clonación de tarjetas en cajeros", "Un tipo de transferencia internacional"], "correct": 0, "answer": "Un fraude por llamada telefónica", "explain": "El estafador llama haciéndose pasar por el banco, la policía o soporte técnico para obtener códigos."}, {"q": "Un cliente cuenta que «el banco» le llamó y le pidió el código OTP para cancelar una compra. Esto es…", "options": ["Un procedimiento normal", "Ingeniería social: el banco nunca pide el OTP", "Un error del sistema", "Una actualización de seguridad"], "correct": 1, "answer": "Ingeniería social: el banco nunca pide el OTP", "explain": "Ningún empleado del banco necesita tus códigos ni tus claves."}, {"q": "¿Qué es el SIM swapping?", "options": ["Cambiar de compañía telefónica", "Conseguir un duplicado de la SIM de la víctima para recibir sus códigos", "Usar dos SIM en un móvil", "Bloquear una SIM robada"], "correct": 1, "answer": "Conseguir un duplicado de la SIM de la víctima para recibir sus códigos", "explain": "La víctima se queda sin señal y el estafador recibe sus SMS de seguridad."}, {"q": "Un proveedor escribe: «cambiamos de cuenta bancaria, paga la factura aquí». ¿Qué haces?", "options": ["Pago rápido para no retrasarme", "Respondo el mismo correo para confirmar", "Lo verifico llamando al proveedor a un número ya conocido", "Ignoro la factura"], "correct": 2, "answer": "Lo verifico llamando al proveedor a un número ya conocido", "explain": "Es el fraude del cambio de cuenta (BEC): confirma siempre por un canal distinto."}, {"q": "¿Qué señal puede indicar skimming en un cajero?", "options": ["Una ranura de tarjeta suelta o abultada", "Una pantalla limpia", "Que imprima el recibo", "Un teclado con braille"], "correct": 0, "answer": "Una ranura de tarjeta suelta o abultada", "explain": "Si algo parece añadido o suelto, no uses el cajero y avisa al banco."}, {"q": "¿Qué es una «cuenta mula»?", "options": ["Una cuenta con muchos ahorros", "Una cuenta que recibe y mueve dinero de fraudes para terceros", "La cuenta de una empresa agrícola", "Una cuenta bloqueada por deudas"], "correct": 1, "answer": "Una cuenta que recibe y mueve dinero de fraudes para terceros", "explain": "Prestar tu cuenta para mover dinero ajeno es delito."}, {"q": "Un «asesor» en redes promete duplicar tu inversión en una semana. Es…", "options": ["Una gran oportunidad", "Una estafa de inversión", "Un producto regulado", "Un sorteo"], "correct": 1, "answer": "Una estafa de inversión", "explain": "Rentabilidades altas, rápidas y garantizadas son la señal clásica de estafa."}]}, "rules": ["Se muestra una pregunta con varias opciones y un tiempo límite.", "Los equipos responden por voz o en el chat de Teams antes de que acabe el tiempo.", "El moderador muestra la respuesta y marca los equipos que acertaron.", "Gana el equipo con más puntos al final."], "ui": {"start": "Comenzar", "how_to_play": "Cómo se juega", "count_items": "{n} retos", "rules": "Reglas", "question_of": "Pregunta {n} de {total}", "round_of": "Ronda {n} de {total}", "word_of": "Palabra {n} de {total}", "person_of": "{n} de {total}", "reveal": "Mostrar respuesta", "next": "Siguiente", "hint": "Pista", "who_scored": "¿Qué equipos acertaron? (+{points} puntos)", "scoreboard": "Marcador", "final": "Resultados finales", "play_again": "Jugar de nuevo", "thanks": "¡Gracias por jugar!", "errors_left": "Fallos restantes: {n}", "solved": "¡Resuelto!", "was": "Era: {answer}", "back_to_board": "Volver al tablero", "roll": "Lanzar dado", "turn": "Turno de", "rolled": "{team} saca {n} → casilla {cell}", "ladder": "🪜 ¡Escalera! {from} → {to}", "snake": "🐍 ¡Serpiente! {from} → {to}", "wins": "¡{team} gana!", "question": "Pregunta", "answer_to_move": "Responde bien para lanzar el dado", "answer_to_climb": "Responde bien para subir", "answer_to_escape": "Responde bien para escapar de la serpiente", "correct": "Correcto", "wrong": "Incorrecto", "saved": "😅 ¡{team} se salva!", "no_climb": "{team} no sube", "lost_turn": "{team} pierde el turno", "again": "🎲 ¡Sacó 6: tira otra vez!", "bounce": "↩ Rebota hasta la casilla {n}", "standings": "Posiciones", "cell": "Casilla", "spin": "Girar", "remove_entry": "Quitar de la ruleta", "empty_wheel": "La ruleta está vacía", "moderator": "Moderador", "player": "Jugador", "card_number": "Nº de cartón", "open_card": "Abrir mi cartón", "draw": "Sacar término", "called": "Términos cantados", "check_card": "Verificar cartón", "line": "¡LÍNEA!", "bingo": "¡BINGO!", "no_line": "Todavía no hay línea", "free": "LIBRE", "card": "Cartón", "found": "Encontradas", "show_solutions": "Mostrar soluciones", "time": "Tiempo", "all_found": "¡Todas encontradas en {time}!", "lie": "MENTIRA", "truth": "VERDAD", "reveal_lie": "Revelar la mentira", "votes": "votos", "would_you_rather": "¿Qué prefieres?", "show_results": "Mostrar resultados", "sound": "Sonido", "fullscreen": "Pantalla completa", "close": "Cerrar", "offline": "Funciona sin internet", "invalid_card": "Ese cartón no existe", "select_hint": "Toca la primera y la última letra de cada palabra", "drawn_all": "Ya se cantaron todos los términos", "bingo_mode": "¿Quién eres?", "moderator_desc": "Saca los términos y verifica los cartones", "player_desc": "Marca tu cartón", "your_answer": "Respuesta", "options": "Opciones", "time_up": "¡Tiempo!", "position": "casilla {n}", "two_truths": "Dos verdades y una mentira", "card_of": "Cartón {n} de {total}"}, "alphabet": "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ"}</script>
+<script>
+
+"use strict";
+const G = JSON.parse(document.getElementById("game-data").textContent);
+const T = G.ui;
+const stage = document.getElementById("stage");
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid === null || kid === undefined || kid === false) continue;
+    e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  }
+  return e;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function fmt(text, params) { return String(text).replace(/\{(\w+)\}/g, (m, k) => (k in params ? params[k] : m)); }
+function shuffle(list) { for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; } return list; }
+
+const Sound = {
+  on: !!G.sound, ctx: null,
+  tone(freq, dur, type = "sine", delay = 0, vol = 0.12) {
+    if (!this.on) return;
+    try {
+      this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = this.ctx.currentTime + delay, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) { /* sin audio */ }
+  },
+  ok() { [523, 659, 784].forEach((f, i) => this.tone(f, 0.2, "triangle", i * 0.09)); },
+  bad() { this.tone(220, 0.3, "sawtooth", 0, 0.07); this.tone(150, 0.4, "sawtooth", 0.14, 0.07); },
+  tick() { this.tone(880, 0.05, "square", 0, 0.035); },
+  pop() { this.tone(700, 0.09, "triangle"); },
+  win() { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => this.tone(f, 0.24, "triangle", i * 0.12)); },
+};
+
+function confetti() {
+  const c = el("canvas", { class: "confetti" }); document.body.append(c);
+  const ctx = c.getContext("2d"); c.width = innerWidth; c.height = innerHeight;
+  const colors = [G.colors.primary, G.colors.accent].concat(G.team_colors);
+  const parts = Array.from({ length: 180 }, () => ({ x: Math.random() * c.width, y: -20 - Math.random() * c.height * 0.5,
+    vx: (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 4, s: 6 + Math.random() * 9, r: Math.random() * 6,
+    vr: (Math.random() - 0.5) * 0.3, c: colors[Math.floor(Math.random() * colors.length)] }));
+  const start = performance.now();
+  (function frame(t) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    for (const p of parts) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.r += p.vr;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); ctx.restore();
+    }
+    if (t - start < 3800) requestAnimationFrame(frame); else c.remove();
+  })(start);
+}
+
+const Teams = {
+  list: (G.teams || []).map((name, i) => ({ name, score: 0, color: G.team_colors[i % G.team_colors.length], token: G.tokens[i % G.tokens.length] })),
+  visible: true,
+  render() {
+    const box = document.getElementById("score");
+    if (!this.list.length || !this.visible) { box.hidden = true; return; }
+    box.hidden = false; clear(box);
+    box.append(el("h2", null, T.scoreboard));
+    this.list.forEach((t, i) => box.append(el("div", { class: "team", style: "--team:" + t.color },
+      el("span", { class: "tname" }, t.name), el("b", { class: "tscore" }, t.score),
+      el("span", { class: "adj" }, el("button", { class: "mini", title: "-10", onclick: () => this.add(i, -10) }, "−"),
+        el("button", { class: "mini", title: "+10", onclick: () => this.add(i, 10) }, "+")))));
+  },
+  add(i, pts) {
+    this.list[i].score += pts; this.render();
+    const node = document.querySelectorAll("#score .team")[i];
+    if (node) { node.classList.add("bump"); setTimeout(() => node.classList.remove("bump"), 450); }
+  },
+};
+
+function awardBar(points, onDone) {
+  const next = el("button", { class: "btn primary big", onclick: () => { chosen.forEach(i => Teams.add(i, points)); if (chosen.size) Sound.pop(); onDone(); } }, T.next + " ▶");
+  const chosen = new Set();
+  if (!Teams.list.length) return el("div", { class: "row" }, next);
+  const chips = el("div", { class: "chips" });
+  Teams.list.forEach((t, i) => {
+    const b = el("button", { class: "chip", style: "--team:" + t.color, onclick: () => { if (chosen.has(i)) chosen.delete(i); else chosen.add(i); b.classList.toggle("on"); } }, t.name);
+    chips.append(b);
+  });
+  return el("div", { class: "award" }, el("p", { class: "award-q" }, fmt(T.who_scored, { points })), chips, next);
+}
+
+function Timer(seconds, onEnd) {
+  const fill = el("div", { class: "timer-fill" }), num = el("span", { class: "timer-num" }, seconds);
+  const node = el("div", { class: "timer" }, fill, num);
+  let left = seconds, id = null;
+  const stop = () => { if (id) { clearInterval(id); id = null; } };
+  if (seconds > 0) {
+    id = setInterval(() => {
+      left -= 1; num.textContent = Math.max(0, left); fill.style.width = (100 * Math.max(0, left) / seconds) + "%";
+      if (left <= 5 && left > 0) Sound.tick();
+      if (left <= 0) { stop(); node.classList.add("done"); num.textContent = T.time_up; Sound.bad(); if (onEnd) onEnd(); }
+    }, 1000);
+  } else node.hidden = true;
+  return { node, stop };
+}
+
+let current = null;
+function screen(...kids) {
+  if (current && current.cleanup) current.cleanup();
+  clear(stage);
+  current = el("section", { class: "screen" }, ...kids);
+  stage.append(current);
+  return current;
+}
+
+function modal(content, persistent) {
+  const box = el("div", { class: "modal" }), overlay = el("div", { class: "overlay" }, box);
+  const close = () => overlay.remove();
+  box.append(el("button", { class: "mini x", title: T.close, onclick: close }, "✕"), content);
+  if (!persistent) overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+  document.body.append(overlay);
+  return { close, box };
+}
+
+function showRules() {
+  modal(el("div", null, el("h2", null, "📖 " + T.how_to_play), el("ul", null, G.rules.map(r => el("li", null, r)))));
+}
+
+function intro(count, start, extra) {
+  screen(el("div", { class: "intro card" }, el("div", { class: "big-emoji" }, G.emoji), el("h2", null, G.title),
+    G.subtitle ? el("p", { class: "muted" }, G.subtitle) : null,
+    count !== null ? el("p", null, el("span", { class: "pill" }, fmt(T.count_items, { n: count }))) : null,
+    extra || null,
+    el("div", { class: "row" }, start ? el("button", { class: "btn primary big", onclick: start }, T.start + " ▶") : null,
+      el("button", { class: "btn", onclick: showRules }, "📖 " + T.how_to_play))));
+}
+
+function podium() {
+  Sound.win(); confetti();
+  const sorted = Teams.list.slice().sort((a, b) => b.score - a.score);
+  screen(el("div", { class: "card podium" }, el("h2", null, sorted.length ? "🏆 " + T.final : "🎉 " + T.thanks),
+    sorted.length ? el("ol", { class: "ranking" }, sorted.map((t, i) => el("li", { style: "--team:" + t.color + ";animation-delay:" + (i * 0.12) + "s" },
+      el("span", { class: "medal" }, ["🥇", "🥈", "🥉"][i] || (i + 1) + "."), el("span", null, t.name), el("b", null, t.score)))) : el("div", { class: "big-emoji" }, "🎊"),
+    el("button", { class: "btn", onclick: () => location.reload() }, "↺ " + T.play_again)));
+}
+
+function setupChrome() {
+  document.title = G.title;
+  if (G.dark) document.body.classList.add("dark");
+  const soundBtn = document.getElementById("btn-sound");
+  const paintSound = () => { soundBtn.textContent = Sound.on ? "🔊" : "🔇"; soundBtn.title = T.sound; };
+  soundBtn.addEventListener("click", () => { Sound.on = !Sound.on; paintSound(); });
+  paintSound();
+  const full = document.getElementById("btn-full");
+  full.title = T.fullscreen;
+  full.addEventListener("click", () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); });
+  const rules = document.getElementById("btn-rules");
+  rules.title = T.rules; rules.addEventListener("click", showRules);
+  document.getElementById("offline").textContent = "✔ " + T.offline + " · IcePilot";
+  Teams.render();
+}
+
+
+function runQuiz() {
+  const qs = G.data.questions;
+  const SHAPES = ["▲", "◆", "●", "■"], COLORS = ["#E21B3C", "#1368CE", "#D89E00", "#26890C"];
+  let i = 0;
+  intro(qs.length, show);
+  function show() {
+    if (i >= qs.length) return podium();
+    const q = qs[i]; let revealed = false;
+    const after = el("div", { class: "after" });
+    const tiles = q.options.map((o, k) => el("div", { class: "option", style: "--opt:" + COLORS[k % 4] }, el("span", { class: "shape" }, SHAPES[k % 4]), el("span", null, o)));
+    const timer = Timer(G.options.seconds || 0, reveal);
+    const btn = el("button", { class: "btn primary big", onclick: reveal }, "👁 " + T.reveal);
+    screen(el("div", { class: "qhead" }, el("span", { class: "pill" }, fmt(T.question_of, { n: i + 1, total: qs.length })), timer.node),
+      el("h2", { class: "question" }, q.q),
+      tiles.length ? el("div", { class: "options n" + tiles.length }, tiles) : null,
+      el("div", { class: "row" }, btn), after).cleanup = timer.stop;
+    function reveal() {
+      if (revealed) return; revealed = true; timer.stop(); btn.remove(); Sound.ok();
+      if (tiles.length) tiles.forEach((t, k) => t.classList.add(k === q.correct ? "right" : "wrong"));
+      else after.append(el("div", { class: "answer-box" }, "✔ " + q.answer));
+      if (G.options.show_explain !== false && q.explain) after.append(el("div", { class: "explain" }, "💡 " + q.explain));
+      after.append(awardBar(G.options.points || 100, () => { i += 1; show(); }));
+    }
+  }
+}
+
+setupChrome();
+runQuiz();
+</script>
+</body>
+</html>
