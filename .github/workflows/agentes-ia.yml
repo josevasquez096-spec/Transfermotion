@@ -1,0 +1,58 @@
+# Prueba los agentes de IA y crea los ejecutables de Windows (.exe).
+# Los .exe se descargan desde la pestaña Actions → la ejecución → Artifacts («PilotSuite-Windows»).
+# Al subir una etiqueta agentes-v* (por ejemplo agentes-v1.0.0) también se publican en Releases.
+name: Agentes IA (.exe para Windows)
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["agentes-ia/**", ".github/workflows/agentes-ia.yml"]
+    tags: ["agentes-v*"]  # en las etiquetas no se aplica el filtro de rutas
+  pull_request:
+    paths: ["agentes-ia/**", ".github/workflows/agentes-ia.yml"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: agentes-ia
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: python -m pip install -r requirements-dev.txt
+      - run: xvfb-run -a python -m pytest -q
+
+  windows-exe:
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python build_exe.py
+      - name: Autoprueba de cada .exe
+        shell: pwsh
+        run: |
+          foreach ($app in "DataPilot", "BIPilot", "DocPilot", "SlidePilot", "FraudPilot") {
+            $p = Start-Process -FilePath (Resolve-Path "dist\$app.exe") -ArgumentList "--selftest" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "$app.exe --selftest falló ($($p.ExitCode))" }
+            Write-Host "$app.exe OK"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PilotSuite-Windows
+          path: agentes-ia/dist/*.exe
+      - if: startsWith(github.ref, 'refs/tags/agentes-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: agentes-ia/dist/*.exe

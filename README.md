@@ -1,5 +1,9 @@
 # Transfer Motion 🕺
 
+> **Nuevo:** en [`agentes-ia/`](agentes-ia/README.md) está la **Suite Pilot IA**, cinco agentes de IA de escritorio
+> (`.exe` para Windows, en español, inglés y francés) para Excel, Power BI, Word, presentaciones y reclamaciones de
+> fraude.
+
 Transfiere el movimiento de un video (o de tu cámara) a la imagen de cualquier personaje, con IA y directamente en el navegador.
 
 1. **Movimiento**: sube un video, usa la cámara o la coreografía de demostración. Sirven planos de cuerpo
