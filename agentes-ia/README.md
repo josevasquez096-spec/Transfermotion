@@ -119,7 +119,8 @@ opción «Mayúsculas y acentos exactos» (que deja filtrar primero a Outlook) l
    **«Additional info»** con las capturas, sin tocar las demás pestañas). Añade documentos extra si los hay.
 4. **Create and save**: se crea `CASE,MOREINFO.pdf` (o `.xlsx`) y los extras como `CASE,MOREINFO1…`, y se copian a
    todas las carpetas. Si el caso ya tiene un MoreInfo en alguna carpeta, el número sigue (`CASE,MOREINFO1.pdf`…),
-   nunca se sobrescribe nada. Siempre queda una copia en la carpeta de trabajo (`Documents\MoreInfo`).
+   nunca se sobrescribe nada. No se guarda copia local: los archivos se crean en una carpeta temporal y se borran
+   tras copiarlos (solo si no se pudo escribir en ninguna carpeta se conservan y la app indica dónde).
 
 ## FraudPilot: notas importantes
 

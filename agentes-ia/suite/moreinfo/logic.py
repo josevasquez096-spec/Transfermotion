@@ -15,6 +15,7 @@ CASE,MOREINFO2.pdf… Extra documents of the case get the next numbers too.
 import re
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -286,25 +287,28 @@ def destinations(folders, case, per_case_folder):
     return [Path(f) / case if per_case_folder else Path(f) for f in folders]
 
 
-def create_package(case, analyst, shots, extras, folders, work_dir, mode="pdf", excel_source=None,
-                   base=DEFAULT_BASE, per_case_folder=False, use_word=True, keep_docx=False, sheet=EXCEL_SHEET):
-    """Builds the MoreInfo file (+ numbered extras) in work_dir and copies everything to the folders.
+def create_package(case, analyst, shots, extras, folders, mode="pdf", excel_source=None, base=DEFAULT_BASE,
+                   per_case_folder=False, use_word=True, keep_docx=False, sheet=EXCEL_SHEET):
+    """Builds the MoreInfo file (+ numbered extras) and saves it straight into the destination folders.
 
-    Returns a dict with the created files, copied paths, errors and the PDF engine used."""
+    The files are made in a temporary folder that is deleted afterwards (no local copy is kept). Only if no
+    destination could be written is that folder kept, so nothing is lost: its path is returned in "kept".
+    Returns a dict with the file names, copied paths, errors, PDF engine and "kept"."""
     case = clean_case(case)
     if not case:
         raise ValueError("Enter the case number.")
+    if not folders:
+        raise ValueError("Add at least one destination folder.")
     if mode == "excel" and not excel_source:
         raise ValueError("Choose the transaction Excel file.")
     if mode == "pdf" and not shots:
         raise ValueError("Add at least one screenshot.")
-    work = Path(work_dir) / case
-    work.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=f"moreinfo_{case}_"))
     main_ext = ".xlsx" if mode == "excel" else ".pdf"
     if mode == "excel" and Path(excel_source).suffix.lower() == ".xlsm":
         main_ext = ".xlsm"
     extra_exts = [".pdf" if Path(e).suffix.lower() in IMAGE_TYPES + (".pdf",) else Path(e).suffix for e in extras]
-    names = next_names(case, base, destinations(folders, case, per_case_folder) + [work], [main_ext] + extra_exts)
+    names = next_names(case, base, destinations(folders, case, per_case_folder), [main_ext] + extra_exts)
     created, engine = [], None
     main = work / names[0]
     if mode == "excel":
@@ -332,5 +336,11 @@ def create_package(case, analyst, shots, extras, folders, work_dir, mode="pdf", 
         else:
             shutil.copy2(extra, dest)
         created.append(dest)
-    copied, errors = deliver(created, folders, case, per_case_folder) if folders else ([], [])
-    return {"created": created, "copied": copied, "errors": errors, "engine": engine, "case": case}
+    copied, errors = deliver(created, folders, case, per_case_folder)
+    kept = None
+    if copied:
+        shutil.rmtree(work, ignore_errors=True)
+    else:
+        kept = work  # ninguna carpeta disponible: se conserva para no perder el trabajo
+    return {"names": [f.name for f in created], "copied": copied, "errors": errors, "engine": engine,
+            "case": case, "kept": kept}

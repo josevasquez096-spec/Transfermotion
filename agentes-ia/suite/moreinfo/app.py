@@ -3,6 +3,7 @@ it to the folders the analyst configures. English only."""
 
 import hashlib
 import json
+import tempfile
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ from . import logic
 from .strings import STRINGS
 
 DEFAULTS = {"folders": [], "per_case": False, "use_word": True, "keep_docx": False, "base": logic.DEFAULT_BASE,
-            "work": "", "analyst": "", "sections": []}
+            "analyst": "", "sections": []}
 POLL_MS = 800
 
 
@@ -51,8 +52,6 @@ class MoreInfoPilot(PilotApp):
             self.prefs.update(json.loads(self.prefs_path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             pass
-        if not self.prefs["work"]:
-            self.prefs["work"] = str(Path.home() / "Documents" / "MoreInfo")
         self.shots = []
         self.extras = []
         self._thumb = None
@@ -170,7 +169,7 @@ class MoreInfoPilot(PilotApp):
             self.excel_var.set(path)
 
     def _store(self, image):
-        folder = Path(self.prefs["work"]) / "_screenshots"
+        folder = Path(tempfile.gettempdir()) / "MoreInfoPilot"  # capturas pegadas (temporales)
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{datetime.now():%Y%m%d_%H%M%S_%f}.png"
         image.convert("RGB").save(path)
@@ -341,7 +340,9 @@ class MoreInfoPilot(PilotApp):
         if mode == "pdf" and not self.need(self.shots, "need_shots"):
             return
         folders = list(self.prefs["folders"])
-        if not folders and not messagebox.askyesno(self.APP_NAME, self.t("no_folders"), parent=self):
+        if not folders:
+            messagebox.showwarning(self.APP_NAME, self.t("no_folders"), parent=self)
+            self.nb.select(1)
             return
         self.prefs["analyst"] = self.analyst_var.get().strip()
         self.save_prefs()
@@ -349,7 +350,7 @@ class MoreInfoPilot(PilotApp):
         p, excel = dict(self.prefs), self.excel_var.get().strip() or None
 
         def work():
-            return logic.create_package(case, p["analyst"], shots, extras, folders, p["work"], mode, excel,
+            return logic.create_package(case, p["analyst"], shots, extras, folders, mode, excel,
                                         p["base"] or logic.DEFAULT_BASE, p["per_case"], p["use_word"],
                                         p["keep_docx"])
 
@@ -358,22 +359,22 @@ class MoreInfoPilot(PilotApp):
     def _created(self, r):
         t = self.t
         lines = [t("engine_" + r["engine"], sheet=logic.EXCEL_SHEET), "", t("created")]
-        lines += [f"  • {p}" for p in r["created"]]
+        lines += [f"  • {name}" for name in r["names"]]
         if r["copied"]:
             lines += [t("copied_to")] + [f"  • {p}" for p in r["copied"]]
-        elif not self.prefs["folders"]:
-            lines.append(t("only_local"))
         if r["errors"]:
             lines += [t("copy_errors")] + [f"  • {folder}: {error}" for folder, error in r["errors"]]
+        if r["kept"]:
+            lines += ["", t("kept", folder=r["kept"])]
         self.result.set("\n".join(lines))
-        self.last_output = r["created"][0].parent
+        self.last_output = r["copied"][0].parent if r["copied"] else r["kept"]
         (messagebox.showwarning if r["errors"] else messagebox.showinfo)(t("done_title"), "\n".join(lines),
                                                                          parent=self)
 
     def open_output(self):
-        folder = self.last_output or Path(self.prefs["work"])
-        Path(folder).mkdir(parents=True, exist_ok=True)
-        open_path(folder)
+        folder = self.last_output or (self.prefs["folders"][0] if self.prefs["folders"] else None)
+        if folder and Path(folder).is_dir():
+            open_path(folder)
 
     # ------------------------------------------------------------ settings tab
     def _build_settings(self):
@@ -417,9 +418,7 @@ class MoreInfoPilot(PilotApp):
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
         self.base_var = tk.StringVar(value=self.prefs["base"])
-        self.work_var = tk.StringVar(value=self.prefs["work"])
         self.field(form, "base_name", ttk.Entry(form, textvariable=self.base_var, width=20), 0, sticky="w")
-        self.field(form, "work_folder", ttk.Entry(form, textvariable=self.work_var), 2)
         self.btn(tab, "save_settings", self.save_settings, accent=True).pack(anchor="w", pady=10)
 
     # ------------------------------------------------------------ sections (saved, defined by the user)
@@ -527,8 +526,7 @@ class MoreInfoPilot(PilotApp):
     def save_settings(self):
         base = logic.clean_case(self.base_var.get()) or logic.DEFAULT_BASE
         self.prefs.update(per_case=bool(self.per_case_var.get()), use_word=bool(self.use_word_var.get()),
-                          keep_docx=bool(self.keep_docx_var.get()), base=base,
-                          work=self.work_var.get().strip() or self.prefs["work"])
+                          keep_docx=bool(self.keep_docx_var.get()), base=base)
         self.base_var.set(base)
         self.save_prefs()
         self.status(self.t("settings_saved"))

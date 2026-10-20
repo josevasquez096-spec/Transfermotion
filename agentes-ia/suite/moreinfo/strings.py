@@ -56,8 +56,7 @@ STRINGS = {key: _en(text) for key, text in {
     "need_case": "Enter the case number.",
     "need_shots": "Add at least one screenshot.",
     "need_selection": "Select a screenshot first.",
-    "no_folders": "No destination folder is configured: the files are only saved in the work folder. "
-                  "Continue?",
+    "no_folders": "Add at least one destination folder in “Folders & options” first.",
     "new_case_confirm": "Clear the screenshots and extra documents to start a new case?",
     "done_title": "Package ready",
     "engine_word": "PDF created with Microsoft Word.",
@@ -66,7 +65,7 @@ STRINGS = {key: _en(text) for key, text in {
     "created": "Created:",
     "copied_to": "Saved to:",
     "copy_errors": "Could not save to:",
-    "only_local": "Only saved in the work folder (no destination folders configured).",
+    "kept": "No destination folder could be written, so the files were kept here: {folder}",
     # settings
     "dest_folders": "Destination folders (network or local paths)",
     "add_folder": "Add folder…",
@@ -76,7 +75,6 @@ STRINGS = {key: _en(text) for key, text in {
     "use_word": "Use Microsoft Word for the PDF when it is installed (otherwise the built-in generator)",
     "keep_docx": "Also save the Word (.docx) file",
     "base_name": "File name after the case number",
-    "work_folder": "Work folder (local copy of every package)",
     "save_settings": "Save options",
     "settings_saved": "Options saved.",
     "folder_missing": "(not reachable now)",

@@ -40,14 +40,14 @@ def test_pdf_package_is_numbered_and_copied(tmp_path):
     extra_doc = tmp_path / "statement.xlsx"
     Workbook().save(extra_doc)
     result = logic.create_package("777", "Ana", shots(tmp_path), [str(extra_img), str(extra_doc)],
-                                  [share1, share2], tmp_path / "work", use_word=False, keep_docx=True)
-    assert result["engine"] == "builtin" and not result["errors"]
-    names = [p.name for p in result["created"]]
+                                  [share1, share2], use_word=False, keep_docx=True)
+    assert result["engine"] == "builtin" and not result["errors"] and result["kept"] is None
+    names = result["names"]
     assert names == ["777,MOREINFO1.pdf", "777,MOREINFO1.docx", "777,MOREINFO2.pdf", "777,MOREINFO3.xlsx"]
     assert sorted(p.name for p in share1.iterdir()) == sorted(names)
-    pdf = result["created"][0].read_bytes()
+    pdf = (share1 / names[0]).read_bytes()
     assert pdf.startswith(b"%PDF") and pdf.count(b"/Type /Page\n") + pdf.count(b"/Type /Page\r") >= 1
-    doc = Document(result["created"][1])
+    doc = Document(share1 / names[1])
     assert len(doc.inline_shapes) == 5
     assert [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")] == [
         "Transactions", "Profile", "Cards", "Claim information"]
@@ -58,9 +58,9 @@ def test_per_case_folder_and_existing_file(tmp_path):
     logic.create_package("888", "", shots(tmp_path)[:1], [], [share], tmp_path / "work",
                                   per_case_folder=True, use_word=False)
     assert (share / "888" / "888,MOREINFO.pdf").exists()
-    again = logic.create_package("888", "", shots(tmp_path)[:1], [], [share], tmp_path / "work",
-                                 per_case_folder=True, use_word=False)
-    assert again["created"][0].name == "888,MOREINFO1.pdf" and not again["errors"]
+    again = logic.create_package("888", "", shots(tmp_path)[:1], [], [share], per_case_folder=True,
+                                 use_word=False)
+    assert again["names"] == ["888,MOREINFO1.pdf"] and not again["errors"]
 
 
 def test_excel_package_adds_tab(tmp_path):
@@ -70,27 +70,25 @@ def test_excel_package_adds_tab(tmp_path):
     wb.active.append(["2026-10-01", "Shop", 120.5])
     src = tmp_path / "txns.xlsx"
     wb.save(src)
-    result = logic.create_package("999", "Ana", shots(tmp_path)[2:], [], [tmp_path / "out"], tmp_path / "work",
-                                  mode="excel", excel_source=str(src))
-    book = load_workbook(result["created"][0])
-    assert result["created"][0].name == "999,MOREINFO.xlsx"
+    result = logic.create_package("999", "Ana", shots(tmp_path)[2:], [], [tmp_path / "out"], mode="excel",
+                                  excel_source=str(src))
+    book = load_workbook(tmp_path / "out" / "999,MOREINFO.xlsx")
+    assert result["names"] == ["999,MOREINFO.xlsx"]
     assert book.sheetnames == ["Transactions", "Additional info"] and book["Transactions"]["C2"].value == 120.5
     assert len(book["Additional info"]._images) == 3 and book["Additional info"]["A1"].value == \
         "Additional info – Case 999"
 
 
 def test_validation(tmp_path):
-    with pytest.raises(ValueError):
-        logic.create_package(" ", "", shots(tmp_path), [], [], tmp_path)
-    with pytest.raises(ValueError):
-        logic.create_package("1", "", [], [], [], tmp_path)
-    with pytest.raises(ValueError):
-        logic.create_package("1", "", [], [], [], tmp_path, mode="excel")
+    cases = [(" ", shots(tmp_path), [tmp_path], {}), ("1", shots(tmp_path), [], {}), ("1", [], [tmp_path], {}),
+             ("1", [], [tmp_path], {"mode": "excel"})]
+    for case, items, folders, kwargs in cases:
+        with pytest.raises(ValueError):
+            logic.create_package(case, "", items, [], folders, **kwargs)
 
 
 def test_unreachable_folder_is_reported(tmp_path):
     blocker = tmp_path / "file.txt"
     blocker.write_text("x")
-    result = logic.create_package("5", "", shots(tmp_path)[:1], [], [blocker / "sub"], tmp_path / "work",
-                                  use_word=False)
-    assert result["errors"] and Path(result["created"][0]).exists()
+    result = logic.create_package("5", "", shots(tmp_path)[:1], [], [blocker / "sub"], use_word=False)
+    assert result["errors"] and (Path(result["kept"]) / "5,MOREINFO.pdf").exists()  # nada se pierde

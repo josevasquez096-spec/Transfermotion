@@ -127,7 +127,7 @@ def exercise_moreinfo(app):
         app.add_shot(tmp / f"s{n}.png")
     app.tree.selection_set("1")
     app.update()
-    app.prefs.update(folders=[str(tmp / "share")], work=str(tmp / "work"), use_word=False)
+    app.prefs.update(folders=[str(tmp / "share")], use_word=False)
     app.case_var.set("12345")
     saved = messagebox.showinfo, messagebox.showwarning
     messagebox.showinfo = messagebox.showwarning = lambda *a, **k: None

@@ -131,15 +131,14 @@ def _moreinfo(out):
     share = out / "share"
     share.mkdir()
     (share / "TEST1,MOREINFO.pdf").write_bytes(b"%PDF")
-    result = logic.create_package("TEST1", "selftest", shots, [shots[0].path], [share], out / "work",
-                                  use_word=False)
+    result = logic.create_package("TEST1", "selftest", shots, [shots[0].path], [share], use_word=False)
     assert sorted(p.name for p in result["copied"]) == ["TEST1,MOREINFO1.pdf", "TEST1,MOREINFO2.pdf"], result
     wb = Workbook()
     wb.active.append(["Date", "Amount"])
     wb.save(out / "txns.xlsx")
-    result = logic.create_package("TEST2", "selftest", shots[1:], [], [share], out / "work", mode="excel",
-                                  excel_source=str(out / "txns.xlsx"))
-    assert "Additional info" in load_workbook(result["created"][0]).sheetnames
+    logic.create_package("TEST2", "selftest", shots[1:], [], [share], mode="excel",
+                         excel_source=str(out / "txns.xlsx"))
+    assert "Additional info" in load_workbook(share / "TEST2,MOREINFO.xlsx").sheetnames
 
 
 CHECKS = {"moreinfo": _moreinfo, "datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,
