@@ -40,6 +40,9 @@ def grab_clipboard():
     return []
 
 
+AUTHOR = "Created by Jose Vasquez"
+
+
 class MoreInfoPilot(PilotApp):
     APP_NAME = "MoreInfo Pilot"
     ICON_TEXT = "MI"
@@ -107,6 +110,7 @@ class MoreInfoPilot(PilotApp):
         try:
             self._bg_source = Image.open(BACKGROUND).convert("RGB")
         except OSError:
+            ttk.Label(self, text=AUTHOR, style="Hint.TLabel").pack(side="bottom", anchor="e", padx=44)
             return
         self.nb.pack_forget()
         self.bg = tk.Canvas(self, highlightthickness=0, borderwidth=0)
@@ -117,18 +121,23 @@ class MoreInfoPilot(PilotApp):
         self.bg.bind("<Configure>", self._paint_background)
 
     def _paint_background(self, event):
+        w, h = max(1, event.width), max(1, event.height)
+        self.bg.delete("all")
         try:
             from PIL import ImageTk
         except ImportError:
-            return
-        w, h = max(1, event.width), max(1, event.height)
-        src = self._bg_source
-        scale = max(w / src.width, h / src.height)  # cubre toda la ventana sin deformar
-        img = src.resize((int(src.width * scale) + 1, int(src.height * scale) + 1))
-        left, top = (img.width - w) // 2, (img.height - h) // 2
-        self._bg_image = ImageTk.PhotoImage(img.crop((left, top, left + w, top + h)))
-        self.bg.delete("all")
-        self.bg.create_image(0, 0, image=self._bg_image, anchor="nw")
+            ImageTk = None
+        if ImageTk is not None:
+            src = self._bg_source
+            scale = max(w / src.width, h / src.height)  # cubre toda la ventana sin deformar
+            img = src.resize((int(src.width * scale) + 1, int(src.height * scale) + 1))
+            left, top = (img.width - w) // 2, (img.height - h) // 2
+            self._bg_image = ImageTk.PhotoImage(img.crop((left, top, left + w, top + h)))
+            self.bg.create_image(0, 0, image=self._bg_image, anchor="nw")
+        # autoría, en la franja inferior del fondo (con sombra para leerse sobre la foto)
+        font = ("Segoe UI", 10, "italic")
+        self.bg.create_text(w - 39, h - 14, text=AUTHOR, anchor="e", fill="#1B2B34", font=font)
+        self.bg.create_text(w - 40, h - 15, text=AUTHOR, anchor="e", fill="#FFFFFF", font=font, tags="author")
 
     def update_ai_status(self):
         self.ai_label.configure(text=self.t("offline"))

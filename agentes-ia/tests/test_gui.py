@@ -189,6 +189,7 @@ def exercise_moreinfo(app):
     assert (tmp / "letters1" / "12345,MOREINFO1.pdf").exists() and (tmp / "letters2" / "12345,MOREINFO1.pdf").exists()
     app.nb.select(1)
     app.update()
+    assert app.bg.itemcget("author", "text") == "Created by Jose Vasquez"
     app.mode.set("excel")
     app._mode_changed()
 
