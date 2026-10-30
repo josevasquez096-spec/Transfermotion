@@ -3,6 +3,7 @@ it to the folders the analyst configures. English only."""
 
 import hashlib
 import json
+import re
 import tempfile
 import tkinter as tk
 from datetime import datetime
@@ -616,9 +617,9 @@ class MoreInfoPilot(PilotApp):
         return LetterDialog(self, template, fields, values)
 
     def _letter_docx(self, template, values):
-        folder = Path(tempfile.gettempdir()) / "MoreInfoPilot"
-        folder.mkdir(parents=True, exist_ok=True)
-        dest = folder / f"No Pay Decision Letter - {template['name']} {datetime.now():%H%M%S%f}.docx"
+        folder = Path(tempfile.mkdtemp(prefix="moreinfo_letter_"))
+        name = re.sub(r'[\\/:*?"<>|]', "-", template["name"])
+        dest = folder / f"No Pay Decision Letter - {name}.docx"
         return letter.fill(self._template_file(template), values, dest)
 
     def preview_letter(self, template, values):
