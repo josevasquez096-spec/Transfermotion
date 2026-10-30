@@ -174,7 +174,7 @@ def exercise_moreinfo(app):
     dialog.address_entry.insert(0, "12345 Road Hill Drive, Toronto, ON, M5V 2ST")
     dialog.fill_address()
     assert dialog.widgets["cc:addressline2"].get() == "" and dialog.widgets["cc:postalcode"].get() == "M5V 2ST"
-    assert "M5V 2ST" in dialog.address_hint.cget("text")
+    assert "M5V 2ST" in dialog.address_hint.cget("text") and "Not found" not in dialog.address_hint.cget("text")
     dialog.address_entry.delete(0, "end")
     dialog.address_entry.insert(0, "221 Main Street, Apt 4B, Toronto ON M5V 2T6")
     dialog.fill_address()

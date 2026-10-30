@@ -1055,7 +1055,9 @@ class LetterDialog(tk.Toplevel):
                 widget.delete(0, "end")
                 widget.insert(0, value)
         names = ", ".join(f.label for f in self.fields if f.key in found)  # en el orden de la plantilla
-        missing = [f.label for f in self.fields if f.key in self.address_roles.values() and f.key not in found]
+        optional = self.address_roles.get("line2")  # la línea 2 (apto., suite) es opcional: no se pide
+        missing = [f.label for f in self.fields
+                   if f.key in self.address_roles.values() and f.key not in found and f.key != optional]
         if len(found) < 2:
             self.address_hint.configure(text=t("address_bad"))
         elif missing:
