@@ -152,10 +152,28 @@ def exercise_moreinfo(app):
     dialog.remove_value("cc:reason", extra.master, extra)  # ✕ quita una razón
     app.update()
     assert dialog.filled()["cc:reason"] == [reasons[0], reasons[2]]
+    # una razón elegida no se puede volver a elegir; con todas elegidas no se añaden más líneas
+    assert dialog.available(field, dialog.more["cc:reason"][0]) == [r for r in reasons if r != reasons[0]]
+    dialog.add_value(field, dialog.add_buttons["cc:reason"].master, reasons[1])
+    last = dialog.add_value(field, dialog.add_buttons["cc:reason"].master)
+    assert dialog.available(field, last) == [reasons[3]]
+    last.set(reasons[3])
+    assert dialog.add_value(field, dialog.add_buttons["cc:reason"].master) is None
+    assert dialog.add_buttons["cc:reason"].instate(["disabled"])
+    dialog.remove_value("cc:reason", last.master, last)
+    assert not dialog.add_buttons["cc:reason"].instate(["disabled"])
+    # la dirección en una sola línea llena sus campos
+    dialog.address_entry.insert(0, "221 Main Street, Apt 4B, Toronto ON M5V 2T6")
+    dialog.fill_address()
+    assert {k: dialog.widgets[k].get() for k in ("cc:addressline1", "cc:addressline2", "cc:city", "cc:province",
+                                                 "cc:postalcode")} == {
+        "cc:addressline1": "221 Main Street", "cc:addressline2": "Apt 4B", "cc:city": "Toronto",
+        "cc:province": "ON", "cc:postalcode": "M5V 2T6"}
     app.letter_ready(dialog.template, dialog.filled())
     dialog.destroy()
     again = app.fill_letter(app._template_by_name("Credit card - English"), app.documents[0]["values"])
-    assert again.values()["cc:reason"] == [reasons[0], reasons[2]]  # al volver a editar se conservan
+    assert again.values()["cc:reason"] == [reasons[0], reasons[2], reasons[1]]  # al volver a editar se conservan
+    assert again.widgets["cc:addressline1"].get() == "221 Main Street"
     again.destroy()
     assert "2" in app.reminder.cget("text") and app.documents[0]["letter"]
     assert app.documents[0]["values"]["cc:customername"] == "Laura Méndez" and not app.documents[0]["previewed"]

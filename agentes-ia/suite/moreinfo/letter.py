@@ -217,6 +217,160 @@ def today(lang="en", now=None):
         return f"{now.day} {MONTHS[lang][now.month - 1]} {now.year}"
     return f"{now:%B} {now.day}, {now.year}"
 
+# ---------------------------------------------------------------- address typed on one line
+
+PROVINCES = {  # código → nombres (inglés y francés)
+    "AB": ("Alberta",), "BC": ("British Columbia", "Colombie-Britannique"), "MB": ("Manitoba",),
+    "NB": ("New Brunswick", "Nouveau-Brunswick"), "NL": ("Newfoundland and Labrador", "Terre-Neuve-et-Labrador",
+                                                          "Newfoundland"),
+    "NS": ("Nova Scotia", "Nouvelle-Écosse"), "NT": ("Northwest Territories", "Territoires du Nord-Ouest"),
+    "NU": ("Nunavut",), "ON": ("Ontario",), "PE": ("Prince Edward Island", "Île-du-Prince-Édouard", "PEI"),
+    "QC": ("Quebec", "Québec", "PQ"), "SK": ("Saskatchewan",), "YT": ("Yukon",),
+}
+POSTAL = re.compile(r"\b([A-Za-z]\d[A-Za-z])[ -]?(\d[A-Za-z]\d)\b")
+ZIP = re.compile(r"\b(\d{5}(?:-\d{4})?)\s*$")
+UNIT = re.compile(r"(?:^|\s)((?:apt\.?|apartment|suite|ste\.?|unit|app\.?|appartement|bureau|room|#)\s*\S+)\s*$", re.I)
+STREET_TYPES = {"st", "street", "ave", "avenue", "rd", "road", "blvd", "boulevard", "dr", "drive", "way", "lane", "ln",
+                "cres", "crescent", "crt", "court", "ct", "pl", "place", "terr", "terrace", "trail", "trl", "pkwy",
+                "parkway", "hwy", "highway", "cir", "circle", "sq", "square", "gate", "grove", "row", "line", "sideroad",
+                "concession", "close", "path", "heights", "hts", "gardens", "gdns", "park", "walk", "cove", "mews"}
+DIRECTIONS = {"n", "s", "e", "w", "ne", "nw", "se", "sw", "north", "south", "east", "west", "nord", "sud", "est",
+              "ouest", "o"}
+ADDRESS_ROLES = (  # (papel, palabras de la etiqueta del campo), en orden de prioridad
+    ("line2", ("line 2", "address 2", "ligne 2", "adresse 2", "suite", "apt", "unit", "appartement")),
+    ("postal", ("postal", "zip", "code postal")),
+    ("province", ("province", "state", "prov")),
+    ("city", ("city", "ville", "town", "municipalit")),
+    ("line1", ("line 1", "address 1", "ligne 1", "adresse 1", "street", "rue", "address", "adresse")),
+)
+
+
+def _fold(text):
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)).casefold().strip()
+
+
+def address_roles(fields):
+    """Address fields of the template: {role: field key} for line1, line2, city, province and postal."""
+    roles = {}
+    for f in fields:
+        if f.kind not in ("text", "dropdown", "combo") or f.multi:
+            continue
+        label = _fold(f.label)
+        for role, words in ADDRESS_ROLES:
+            if role not in roles and any(w in label for w in words):
+                roles[role] = f.key
+                break
+    return roles if "line1" in roles and len(roles) >= 2 else {}
+
+
+def _province(part):
+    """(code, name as written, rest of the text) when the text ends with a province, otherwise None."""
+    folded = _fold(part)
+    names = sorted(((n, code) for code, ns in PROVINCES.items() for n in (code,) + ns), key=lambda x: -len(x[0]))
+    for name, code in names:
+        key = _fold(name)
+        if folded == key or folded.endswith(" " + key):
+            return code, part[len(part) - len(name):].strip(), part[:len(part) - len(name)].strip()
+    return None
+
+
+def province_option(code, written, options=()):
+    """The province as the template's drop-down lists it (code or name), or as it was written."""
+    if not options:
+        return written if len(written) > 2 else code
+    wanted = {_fold(n) for n in (code,) + PROVINCES[code]}
+    return next((o for o in options if _fold(o) in wanted), "")
+
+
+def _split_street(text):
+    """«221 Main Street Apt 4B Toronto» (no commas) → street, unit, city, using the street type as the end."""
+    words = text.split()
+    for i in range(len(words) - 1, 0, -1):
+        if _fold(words[i]).rstrip(".") in STREET_TYPES and any(c.isdigit() for c in " ".join(words[:i])):
+            end = i + 1
+            if end < len(words) and _fold(words[end]).rstrip(".") in DIRECTIONS:
+                end += 1
+            rest = words[end:]
+            unit = ""
+            if rest and rest[0].startswith("#") and len(rest[0]) > 1:  # «#12»
+                unit, rest = rest[0], rest[1:]
+            elif len(rest) > 1 and UNIT.match(" ".join(rest[:2])):  # «Apt 4B», «Suite 1801»
+                unit, rest = " ".join(rest[:2]), rest[2:]
+            return " ".join(words[:end]), unit, " ".join(rest)
+    return text, "", ""
+
+
+def split_address(text):
+    """Splits an address typed on one line, e.g. «221 Main Street, Apt 4B, Toronto ON M5V 2T6» or
+    «123 rue Principale, app. 4, Montréal (Québec) H2X 1Y4», into line1, line2, city, province (code and name as
+    written) and postal. Parts that are not found are left out."""
+    s = " ".join(text.replace("\n", ", ").replace("(", ",").replace(")", ",").split())
+    out = {}
+    matches = list(POSTAL.finditer(s))
+    if matches:
+        m = matches[-1]
+        out["postal"] = f"{m.group(1)} {m.group(2)}".upper()
+        s = s[:m.start()] + "," + s[m.end():]
+    else:
+        m = ZIP.search(s)
+        if m:
+            out["postal"], s = m.group(1), s[:m.start()]
+    parts = [p.strip(" .;") for p in s.split(",") if p.strip(" .;")]
+    if parts and _fold(parts[-1]) == "canada":
+        parts.pop()
+    if parts:
+        found = _province(parts[-1])
+        if found and (found[2] or len(parts) > 1):
+            out["province"] = found[0]
+            out["province_written"] = found[1]
+            if found[2]:
+                parts[-1] = found[2]
+            else:
+                parts.pop()
+    if len(parts) == 1:
+        line1, line2, city = _split_street(parts[0])
+        parts = [line1] + ([line2] if line2 else []) + ([city] if city else [])
+        if len(parts) == 1:
+            out["line1"] = parts[0]
+            return out
+        out["city"] = parts.pop()
+    elif len(parts) > 1:
+        out["city"] = parts.pop()
+    if parts:
+        line1, rest = parts[0], parts[1:]
+        unit = UNIT.search(line1)
+        if not rest and unit and unit.start() > 0:  # «221 Main Street Apt 4B, Toronto»
+            line1, rest = line1[:unit.start()].strip(), [unit.group(1)]
+        out["line1"] = line1
+        if rest:
+            out["line2"] = ", ".join(rest)
+    return out
+
+
+def address_values(text, fields):
+    """Values for the template's address fields from an address typed on one line. What has no field of its own
+    goes with the closest field (e.g. the unit with the street when there is no line 2)."""
+    roles = address_roles(fields)
+    if not roles:
+        return {}
+    by_key = {f.key: f for f in fields}
+    parts = split_address(text)
+    if "province" in parts:
+        field = by_key.get(roles.get("province"))
+        options = field.options if field is not None and field.kind == "dropdown" else ()
+        parts["province"] = province_option(parts["province"], parts.pop("province_written"), options)
+    if "line2" in parts and "line2" not in roles:
+        parts["line1"] = f"{parts['line1']}, {parts.pop('line2')}"
+    if "city" in parts and "city" not in roles:
+        parts["line1"] = f"{parts['line1']}, {parts.pop('city')}"
+    for role in ("province", "postal"):
+        if parts.get(role) and role not in roles:
+            target = "city" if "city" in parts else "line1"
+            parts[target] = f"{parts.get(target, '')} {parts.pop(role)}".strip()
+    return {roles[role]: value for role, value in parts.items() if role in roles and value}
+
 
 # ---------------------------------------------------------------- filling
 
@@ -287,8 +441,17 @@ def _fill_placeholders(paragraph, values):
         t.text = ""
 
 
+def unique(values):
+    """Non-empty values without repeats, in order (a reason chosen twice counts once)."""
+    out = []
+    for value in values:
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
 def _flat(value):
-    return "; ".join(v for v in value if v) if isinstance(value, (list, tuple)) else value
+    return "; ".join(unique(value)) if isinstance(value, (list, tuple)) else value
 
 
 def _clean_clone(element):
@@ -309,12 +472,12 @@ def _repeat_values(tree, name, values):
     for n, (sdt, pr, content) in enumerate(list(_leaf_sdts(tree))):
         key, _ = _sdt_key(pr, f"{name}{n}")
         value = values.get(key)
-        if not isinstance(value, (list, tuple)) or len([v for v in value if v]) < 2 or sdt.get(DONE):
+        if not isinstance(value, (list, tuple)) or len(unique(value)) < 2 or sdt.get(DONE):
             continue
         unit = _repeat_unit(sdt, _kind(pr)[0])
         if unit is None:
             continue
-        items = [v for v in value if v]
+        items = unique(value)
         anchor = unit
         for item in items[1:]:
             clone = deepcopy(unit)
@@ -464,6 +627,10 @@ def make_sample_template(path):
 
     para(_sdt_xml("LetterDate", "Letter date", "date", placeholder="Click to choose a date."))
     para(_sdt_xml("CustomerName", "Customer name"))
+    para(_sdt_xml("AddressLine1", "Address line 1"))
+    para(_sdt_xml("AddressLine2", "Address line 2"))
+    para(_sdt_xml("City", "City"), " ", _sdt_xml("Province", "Province", "dropdown", tuple(PROVINCES)), "  ",
+         _sdt_xml("PostalCode", "Postal code"))
     para("Claim number: [Claim number]")
     para("")
     para("Dear ", _sdt_xml("CustomerName", "Customer name"), ",")

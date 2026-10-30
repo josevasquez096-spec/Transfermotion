@@ -973,7 +973,14 @@ class LetterDialog(tk.Toplevel):
         form.columnconfigure(1, weight=1)
         case, analyst = app.case_var.get().strip(), app.analyst_var.get().strip()
         language = letter.language(app._template_file(template))
-        for row, f in enumerate(fields):
+        self.address_roles = letter.address_roles(fields)
+        self.address_entry = None
+        row = -1
+        for f in fields:
+            row += 1
+            if self.address_entry is None and f.key in self.address_roles.values():
+                self._address_row(form, row)  # la dirección completa en una línea, antes de sus campos
+                row += 1
             label = f.label + (f"  (×{f.count})" if f.count > 1 else "")
             ttk.Label(form, text=label).grid(row=row, column=0, sticky="nw" if f.multi else "w", padx=(0, 10),
                                              pady=(10 if f.multi else 4, 4))
@@ -993,9 +1000,10 @@ class LetterDialog(tk.Toplevel):
             box = ttk.Frame(form)
             box.grid(row=row, column=1, sticky="ew", pady=4, padx=(0, 6))
             box.columnconfigure(0, weight=1)
-            items = value if isinstance(value, (list, tuple)) else [value]
-            self.widgets[f.key] = self._input(box, f, items[0] if items else "")
+            items = letter.unique(value if isinstance(value, (list, tuple)) else [value]) or [""]
+            self.widgets[f.key] = self._input(box, f, items[0])
             self.widgets[f.key].grid(row=0, column=0, sticky="ew")
+            self._no_repeats(f, self.widgets[f.key])
             self.more[f.key] = []
             add = ttk.Button(box, text=app.t("letter_add_more"), style="Toolbutton",
                              command=lambda f=f, box=box: self.add_value(f, box))
@@ -1003,6 +1011,62 @@ class LetterDialog(tk.Toplevel):
             for item in items[1:]:
                 self.add_value(f, box, item)
             self._place_add(f.key)
+
+    # ------------------------------------------------ full address on one line
+    def _address_row(self, form, row):
+        t = self.app.t
+        ttk.Label(form, text=t("full_address"), font=("Segoe UI", 10, "bold")).grid(row=row, column=0, sticky="nw",
+                                                                                   padx=(0, 10), pady=(8, 4))
+        box = ttk.Frame(form)
+        box.grid(row=row, column=1, sticky="ew", pady=(4, 8), padx=(0, 6))
+        box.columnconfigure(0, weight=1)
+        self.address_entry = ttk.Entry(box)
+        self.address_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(box, text=t("address_fill"), command=self.fill_address).grid(row=0, column=1, padx=(6, 0))
+        self.address_hint = ttk.Label(box, text=t("address_hint"), style="Hint.TLabel", justify="left",
+                                      wraplength=int(440 * self.app.scale))
+        self.address_hint.grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        self.address_entry.bind("<Return>", lambda e: self.fill_address())
+        self.address_entry.bind("<<Paste>>", lambda e: self.after_idle(self.fill_address))
+
+    def fill_address(self, text=None):
+        """Splits the address typed on one line and fills each address field of the template."""
+        t = self.app.t
+        text = self.address_entry.get() if text is None else text
+        if not text.strip():
+            return {}
+        found = letter.address_values(text, self.fields)
+        for key, value in found.items():
+            widget = self.widgets[key]
+            if isinstance(widget, ttk.Combobox):
+                widget.set(value)
+            else:
+                widget.delete(0, "end")
+                widget.insert(0, value)
+        labels = {f.key: f.label for f in self.fields}
+        names = ", ".join(labels[k] for k in found)
+        missing = [labels[k] for k in self.address_roles.values() if k not in found]
+        if len(found) < 2:
+            self.address_hint.configure(text=t("address_bad"))
+        elif missing:
+            self.address_hint.configure(text=t("address_missing", names=names, missing=", ".join(missing)))
+        else:
+            self.address_hint.configure(text=t("address_filled", names=names))
+        return found
+
+    # ------------------------------------------------ several values (reasons)
+    def _all(self, key):
+        return [self.widgets[key]] + self.more.get(key, [])
+
+    def available(self, f, widget):
+        """Options still free for this line: a reason already chosen on another line cannot be chosen again."""
+        taken = {w.get().strip() for w in self._all(f.key) if w is not widget}
+        return [o for o in f.options if o not in taken]
+
+    def _no_repeats(self, f, widget):
+        if isinstance(widget, ttk.Combobox):
+            widget.configure(postcommand=lambda: widget.configure(values=self.available(f, widget)))
+            widget.bind("<<ComboboxSelected>>", lambda e: self._place_add(f.key), add="+")
 
     def _input(self, parent, f, value=""):
         if f.kind in ("dropdown", "combo"):
@@ -1015,10 +1079,13 @@ class LetterDialog(tk.Toplevel):
 
     def add_value(self, f, box, value=""):
         """Another value for the same field (another reason): it becomes one more item or bullet in the letter."""
+        if f.options and len(self._all(f.key)) >= len(f.options):
+            return None  # ya están todas las opciones
         row = ttk.Frame(box)
         row.columnconfigure(0, weight=1)
         widget = self._input(row, f, value)
         widget.grid(row=0, column=0, sticky="ew")
+        self._no_repeats(f, widget)
         ttk.Button(row, text="✕", width=3, command=lambda: self.remove_value(f.key, row, widget)).grid(
             row=0, column=1, padx=(4, 0))
         self.more[f.key].append(widget)
@@ -1034,12 +1101,16 @@ class LetterDialog(tk.Toplevel):
         self._place_add(key)
 
     def _place_add(self, key):
-        self.add_buttons[key].grid(row=len(self.more[key]) + 1, column=0, sticky="w", pady=(4, 0))
+        button = self.add_buttons[key]
+        button.grid(row=len(self.more[key]) + 1, column=0, sticky="w", pady=(4, 0))
+        field = next(f for f in self.fields if f.key == key)
+        full = bool(field.options) and len(self._all(key)) >= len(field.options)
+        button.state(["disabled"] if full else ["!disabled"])
 
     def values(self):
         values = {key: widget.get().strip() for key, widget in self.widgets.items()}
-        for key, extra in self.more.items():
-            values[key] = [v for v in [values[key]] + [w.get().strip() for w in extra] if v]
+        for key in self.more:
+            values[key] = letter.unique(w.get().strip() for w in self._all(key))
         return values
 
     def filled(self):

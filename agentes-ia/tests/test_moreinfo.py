@@ -197,8 +197,9 @@ def test_letter_content_controls(tmp_path):
     assert text[-1] == "Laura Méndez"
     again = {f.key: f for f in letter.scan(out)}
     assert again["cc:customername"].value == "Laura Méndez"
-    # solo quedan con el texto gris de ejemplo los 3 campos que no se rellenaron (importe, comercio, analista)
-    assert __import__("zipfile").ZipFile(out).read("word/document.xml").decode().count("PlaceholderText") == 3
+    # solo quedan con el texto gris de ejemplo los campos que no se rellenaron (importe, comercio, analista y los
+    # 5 de la dirección)
+    assert __import__("zipfile").ZipFile(out).read("word/document.xml").decode().count("PlaceholderText") == 8
 
 
 def test_letter_legacy_fields_ref_and_split_placeholder(tmp_path):
@@ -351,3 +352,52 @@ def test_several_reasons_in_bullets_and_inline(tmp_path):
     out = letter.fill(tmp_path / "t.docx", {reason.key: ["Known device"], province.key: ["ON", "QC"]},
                       tmp_path / "out2.docx")
     assert [text for _, text in _lines(out)][1:] == ["Known device", "Province: ON; QC"]
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("221 Main Street, Apt 4B, Toronto ON M5V 2T6",
+     dict(line1="221 Main Street", line2="Apt 4B", city="Toronto", province="ON", postal="M5V 2T6")),
+    ("221 Main Street Apt 4B Toronto ON m5v2t6",  # sin comas
+     dict(line1="221 Main Street", line2="Apt 4B", city="Toronto", province="ON", postal="M5V 2T6")),
+    ("123 rue Principale, app. 4, Montréal (Québec) H2X 1Y4",
+     dict(line1="123 rue Principale", line2="app. 4", city="Montréal", province="QC", postal="H2X 1Y4")),
+    ("4-123 King St W, Hamilton, Ontario L8P 4S6, Canada",
+     dict(line1="4-123 King St W", city="Hamilton", province="ON", postal="L8P 4S6")),
+    ("10 Elm Ave #12 Ottawa ON K1A 0B1",
+     dict(line1="10 Elm Ave", line2="#12", city="Ottawa", province="ON", postal="K1A 0B1")),
+    ("221 Main Street", dict(line1="221 Main Street")),
+])
+def test_split_address(text, expected):
+    from suite.moreinfo import letter
+
+    parts = letter.split_address(text)
+    parts.pop("province_written", None)
+    assert parts == expected
+
+
+def test_address_values_follow_the_template_fields(tmp_path):
+    from suite.moreinfo import letter
+
+    fields = letter.scan(letter.make_sample_template(tmp_path / "t.docx"))
+    assert letter.address_roles(fields) == {"line1": "cc:addressline1", "line2": "cc:addressline2", "city": "cc:city",
+                                            "province": "cc:province", "postal": "cc:postalcode"}
+    values = letter.address_values("123 rue Principale, app. 4, Montréal (Québec) H2X 1Y4", fields)
+    assert values == {"cc:addressline1": "123 rue Principale", "cc:addressline2": "app. 4", "cc:city": "Montréal",
+                      "cc:province": "QC", "cc:postalcode": "H2X 1Y4"}
+    # sin «Address line 2» ni «Postal code» en la plantilla: el resto va con el campo más cercano
+    fewer = [f for f in fields if f.key not in ("cc:addressline2", "cc:postalcode")]
+    values = letter.address_values("221 Main Street, Apt 4B, Toronto ON M5V 2T6", fewer)
+    assert values["cc:addressline1"] == "221 Main Street, Apt 4B" and values["cc:city"] == "Toronto M5V 2T6"
+    # una lista de provincias con nombres
+    fields[[f.key for f in fields].index("cc:province")].options = ["Ontario", "Québec"]
+    assert letter.address_values("1 Bay St, Toronto ON M5J 2R8", fields)["cc:province"] == "Ontario"
+
+
+def test_a_reason_counts_once(tmp_path):
+    from suite.moreinfo import letter
+
+    template = letter.make_sample_template(tmp_path / "t.docx")
+    reason = next(f for f in letter.scan(template) if f.key == "cc:reason")
+    twice = [reason.options[0], reason.options[1], reason.options[0]]
+    out = letter.fill(template, {"cc:reason": twice}, tmp_path / "out.docx")
+    assert next(f for f in letter.scan(out) if f.key == "cc:reason").count == 2

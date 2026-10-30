@@ -54,10 +54,18 @@ STRINGS = {key: _en(text) for key, text in {
     "letter_title": "No Pay Decision Letter",
     "letter_intro": "Fill in the fields of the letter. A field marked ×2, ×3… appears several times in the letter "
                     "(for example the customer name, also shown as a title): type it once. Use “＋ Add another” to "
-                    "choose more than one option (for example several reasons). The letter is saved as PDF in the "
+                    "choose more than one option (for example several reasons); an option can be chosen only once. The letter is saved as PDF in the "
                     "letter folders when you upload.",
     "letter_add": "Add letter to the documents",
     "letter_add_more": "＋ Add another",
+    "full_address": "Full address (one line)",
+    "address_fill": "Fill address ↓",
+    "address_hint": "Paste or type the whole address and press Enter, e.g. 221 Main Street, Apt 4B, Toronto ON "
+                    "M5V 2T6. The street, unit, city, province and postal code fields below are filled in.",
+    "address_filled": "✔ Filled: {names}. Check them below.",
+    "address_missing": "✔ Filled: {names}. Not found: {missing}; complete it below.",
+    "address_bad": "The address could not be split. Separate the parts with commas: street, unit, city, province "
+                   "and postal code.",
     "letter_missing": "These fields are empty: {names}.\n\nAdd the letter anyway?",
     "letter_added": "Decision letter added to the documents (it will be saved as PDF in the letter folders).",
     "same_format": "Same format",
