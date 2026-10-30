@@ -169,6 +169,15 @@ def exercise_moreinfo(app):
                                                  "cc:postalcode")} == {
         "cc:addressline1": "221 Main Street", "cc:addressline2": "Apt 4B", "cc:city": "Toronto",
         "cc:province": "ON", "cc:postalcode": "M5V 2T6"}
+    # al volver a llenar, lo que no está se vacía; un código postal mal escrito se avisa
+    dialog.address_entry.delete(0, "end")
+    dialog.address_entry.insert(0, "12345 Road Hill Drive, Toronto, ON, M5V 2ST")
+    dialog.fill_address()
+    assert dialog.widgets["cc:addressline2"].get() == "" and dialog.widgets["cc:postalcode"].get() == "M5V 2ST"
+    assert "M5V 2ST" in dialog.address_hint.cget("text")
+    dialog.address_entry.delete(0, "end")
+    dialog.address_entry.insert(0, "221 Main Street, Apt 4B, Toronto ON M5V 2T6")
+    dialog.fill_address()
     app.letter_ready(dialog.template, dialog.filled())
     dialog.destroy()
     again = app.fill_letter(app._template_by_name("Credit card - English"), app.documents[0]["values"])

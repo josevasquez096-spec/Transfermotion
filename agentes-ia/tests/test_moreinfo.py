@@ -366,6 +366,12 @@ def test_several_reasons_in_bullets_and_inline(tmp_path):
     ("10 Elm Ave #12 Ottawa ON K1A 0B1",
      dict(line1="10 Elm Ave", line2="#12", city="Ottawa", province="ON", postal="K1A 0B1")),
     ("221 Main Street", dict(line1="221 Main Street")),
+    # código postal mal escrito («T» en vez de número): igual va a su campo (la app pide revisarlo)
+    ("12345 Road Hill Drive, Toronto, ON, M5V 2ST",
+     dict(line1="12345 Road Hill Drive", city="Toronto", province="ON", postal="M5V 2ST")),
+    ("12345 Road Hill Drive Toronto ON M5V2ST",
+     dict(line1="12345 Road Hill Drive", city="Toronto", province="ON", postal="M5V 2ST")),
+    ("1 Bay Way, Toronto, ON", dict(line1="1 Bay Way", city="Toronto", province="ON")),
 ])
 def test_split_address(text, expected):
     from suite.moreinfo import letter
@@ -401,3 +407,23 @@ def test_a_reason_counts_once(tmp_path):
     twice = [reason.options[0], reason.options[1], reason.options[0]]
     out = letter.fill(template, {"cc:reason": twice}, tmp_path / "out.docx")
     assert next(f for f in letter.scan(out) if f.key == "cc:reason").count == 2
+
+
+def test_valid_postal():
+    from suite.moreinfo import letter
+
+    assert letter.valid_postal("M5V 2T6") and not letter.valid_postal("M5V 2ST") and not letter.valid_postal("")
+
+
+def test_empty_field_leaves_no_example_text_or_blank_line(tmp_path):
+    from suite.moreinfo import letter
+
+    template = letter.make_sample_template(tmp_path / "t.docx")
+    values = {f.key: "" for f in letter.scan(template)}
+    values.update({"cc:customername": "Jose Vasquez", "cc:addressline1": "12345 Road Hill Drive", "cc:city": "Toronto",
+                   "cc:province": "ON", "cc:postalcode": "M5V 2T6"})
+    out = letter.fill(template, values, tmp_path / "out.docx")
+    lines = [text for _, text in _lines(out)]
+    assert "PlaceholderText" not in __import__("zipfile").ZipFile(out).read("word/document.xml").decode()
+    start = lines.index("Jose Vasquez")
+    assert lines[start:start + 3] == ["Jose Vasquez", "12345 Road Hill Drive", "Toronto ON  M5V 2T6"]

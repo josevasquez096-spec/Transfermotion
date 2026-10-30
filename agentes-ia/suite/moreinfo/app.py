@@ -626,6 +626,8 @@ class MoreInfoPilot(PilotApp):
         return LetterDialog(self, template, fields, values)
 
     def _letter_docx(self, template, values):
+        # los campos sin rellenar quedan en blanco en la carta (sin el texto gris de ejemplo de la plantilla)
+        values = {**{f.key: "" for f in self._template_fields(template)}, **values}
         folder = Path(tempfile.mkdtemp(prefix="moreinfo_letter_"))
         name = re.sub(r'[\\/:*?"<>|]', "-", template["name"])
         dest = folder / f"No Pay Decision Letter - {name}.docx"
@@ -1045,8 +1047,8 @@ class LetterDialog(tk.Toplevel):
         if not text.strip():
             return {}
         found = letter.address_values(text, self.fields)
-        for key, value in found.items():
-            widget = self.widgets[key]
+        for key in self.address_roles.values():  # lo que no se encuentra se vacía (no quedan datos anteriores)
+            widget, value = self.widgets[key], found.get(key, "")
             if isinstance(widget, ttk.Combobox):
                 widget.set(value)
             else:
@@ -1060,6 +1062,10 @@ class LetterDialog(tk.Toplevel):
             self.address_hint.configure(text=t("address_missing", names=names, missing=", ".join(missing)))
         else:
             self.address_hint.configure(text=t("address_filled", names=names))
+        postal = found.get(self.address_roles.get("postal"), "")
+        if postal and not letter.valid_postal(postal) and not postal[:1].isdigit():
+            self.address_hint.configure(text=self.address_hint.cget("text") + " " + t("address_postal_check",
+                                                                                     postal=postal))
         return found
 
     # ------------------------------------------------ several values (reasons)

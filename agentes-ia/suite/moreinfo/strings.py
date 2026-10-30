@@ -64,6 +64,7 @@ STRINGS = {key: _en(text) for key, text in {
                     "M5V 2T6. The street, unit, city, province and postal code fields below are filled in.",
     "address_filled": "✔ Filled: {names}. Check them below.",
     "address_missing": "✔ Filled: {names}. Not found: {missing}; complete it below.",
+    "address_postal_check": "⚠ Check the postal code “{postal}”: Canadian postal codes look like A1A 1A1.",
     "address_bad": "The address could not be split. Separate the parts with commas: street, unit, city, province "
                    "and postal code.",
     "letter_missing": "These fields are empty: {names}.\n\nAdd the letter anyway?",

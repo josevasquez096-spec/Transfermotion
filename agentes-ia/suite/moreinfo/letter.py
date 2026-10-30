@@ -228,6 +228,8 @@ PROVINCES = {  # código → nombres (inglés y francés)
     "QC": ("Quebec", "Québec", "PQ"), "SK": ("Saskatchewan",), "YT": ("Yukon",),
 }
 POSTAL = re.compile(r"\b([A-Za-z]\d[A-Za-z])[ -]?(\d[A-Za-z]\d)\b")
+# con un error de tecleo (p. ej. «M5V 2ST»): dos grupos de 3 letras/números al final, que empiezan como un código
+POSTAL_LOOSE = re.compile(r"(?:^|[\s,])([A-Za-z][0-9A-Za-z]{2})[ -]?([0-9A-Za-z]{3})[\s,.]*$")
 ZIP = re.compile(r"\b(\d{5}(?:-\d{4})?)\s*$")
 UNIT = re.compile(r"(?:^|\s)((?:apt\.?|apartment|suite|ste\.?|unit|app\.?|appartement|bureau|room|#)\s*\S+)\s*$", re.I)
 STREET_TYPES = {"st", "street", "ave", "avenue", "rd", "road", "blvd", "boulevard", "dr", "drive", "way", "lane", "ln",
@@ -302,6 +304,23 @@ def _split_street(text):
     return text, "", ""
 
 
+def valid_postal(value):
+    """True for a Canadian postal code written as A1A 1A1."""
+    return bool(re.fullmatch(r"[A-Z]\d[A-Z] \d[A-Z]\d", value or ""))
+
+
+def _loose_postal(s):
+    m = POSTAL_LOOSE.search(s)
+    if m is None:
+        return None
+    code = m.group(1) + m.group(2)
+    if sum(c.isdigit() for c in code) < 2 or sum(c.isalpha() for c in code) < 2:
+        return None  # palabras normales («Bay Way») no son códigos postales
+    if _province(m.group(0).strip(" ,.")):
+        return None
+    return m
+
+
 def split_address(text):
     """Splits an address typed on one line, e.g. «221 Main Street, Apt 4B, Toronto ON M5V 2T6» or
     «123 rue Principale, app. 4, Montréal (Québec) H2X 1Y4», into line1, line2, city, province (code and name as
@@ -313,6 +332,9 @@ def split_address(text):
         m = matches[-1]
         out["postal"] = f"{m.group(1)} {m.group(2)}".upper()
         s = s[:m.start()] + "," + s[m.end():]
+    elif (m := _loose_postal(s)) is not None:  # mal escrito: va al código postal y la app avisa
+        out["postal"] = f"{m.group(1)} {m.group(2)}".upper()
+        s = s[:m.start()] + ","
     else:
         m = ZIP.search(s)
         if m:
@@ -498,6 +520,7 @@ def fill(template, values, dest):
     several values). Returns dest."""
     template, dest = Path(template), Path(dest)
     multi, values = values, {k: _flat(v) for k, v in values.items()}
+    emptied = []  # controles que quedaron vacíos (p. ej. «Address line 2» sin datos)
     bookmarks = {}  # nombre de marcador → clave, para los campos REF que repiten un valor
     bindings = []  # (storeItemID, xpath, prefixMappings, value)
     with zipfile.ZipFile(template) as zf:
@@ -521,6 +544,8 @@ def fill(template, values, dest):
                 continue
             if key in values:
                 _fill_sdt(pr, content, values[key])
+                if values[key] == "":
+                    emptied.append(sdt)
                 binding = pr.find(W + "dataBinding")
                 if binding is not None:
                     bindings.append((binding.get(W + "storeItemID"), binding.get(W + "xpath"),
@@ -556,6 +581,8 @@ def fill(template, values, dest):
             ref = _ref_name(simple.get(W + "instr"))
             if ref and bookmarks.get(ref) in values:
                 _set_runs_text(list(simple.iter(W + "r")), values[bookmarks[ref]])
+    for sdt in emptied:
+        _drop_empty_line(sdt)
     for name, tree in trees.items():
         contents[name] = etree.tostring(tree, xml_declaration=True, encoding="UTF-8", standalone=True)
     _update_custom_xml(contents, bindings)
@@ -566,6 +593,21 @@ def fill(template, values, dest):
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(tmp), dest)
     return dest
+
+
+def _drop_empty_line(sdt):
+    """Removes the line of an empty field when nothing else is on it, so the letter has no blank line."""
+    paragraph = sdt.getparent()
+    if paragraph is None or paragraph.tag != W + "p" or _text(paragraph).strip():
+        return
+    if any(paragraph.iter(W + "drawing", W + "pict", W + "object", W + "fldChar", W + "fldSimple", W + "br")):
+        return
+    parent = paragraph.getparent()
+    if parent is None or parent.tag not in (W + "body", W + "sdtContent"):
+        return  # en tablas, celdas, etc. el párrafo se queda
+    if parent.tag == W + "sdtContent" and len(parent.findall(W + "p")) + len(parent.findall(W + "tbl")) <= 1:
+        return
+    parent.remove(paragraph)
 
 
 def _update_custom_xml(contents, bindings):
