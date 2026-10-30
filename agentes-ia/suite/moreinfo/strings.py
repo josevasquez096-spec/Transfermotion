@@ -8,7 +8,38 @@ def _en(text):
 STRINGS = {key: _en(text) for key, text in {
     "tagline": "Fraud package evidence: screenshots → CASE,MOREINFO.pdf or Excel, saved to your folders",
     "tab_package": "📎 MoreInfo package",
+    "tab_documents": "📄 No Pay Decision Letter & documents",
     "tab_settings": "⚙ Folders & options",
+    "docs_intro": "Add the No Pay Decision Letter and any other case documents (Digital Footprints, Web extractions, "
+                  "Voice Match, Approvals…). Word files and images are saved as PDF; PDF, Excel, text and email "
+                  "files keep their format. They go to the same folders as the MoreInfo, named CASE,MOREINFO with "
+                  "the next number (CASE,MOREINFO1, CASE,MOREINFO2…). They are uploaded together with the MoreInfo "
+                  "package, or on their own with “Upload documents only”.",
+    "drop_here": "Drag and drop files here  •  Ctrl+V to paste  •  click to browse",
+    "drop_unavailable": "Ctrl+V to paste  •  click to browse your PC",
+    "browse_docs": "Browse PC…",
+    "paste_docs": "Paste (Ctrl+V)",
+    "upload_docs": "Upload documents only",
+    "dcol_n": "#",
+    "dcol_file": "File",
+    "dcol_type": "Type",
+    "dcol_saved": "Saved as",
+    "same_format": "Same format",
+    "doc_types": "Case documents",
+    "docs_added": "{n} document(s) added",
+    "nothing_to_paste": "There is nothing to paste. Copy a file in File Explorer, an image or the text of an email "
+                        "and try again.",
+    "need_documents": "Add at least one document first.",
+    "docs_reminder": "⚠ Don't forget to upload the No Pay Decision Letter and other documents as applicable "
+                     "(Digital Footprints, Web extractions, Voice Match, Approvals, etc). Click here to add them.",
+    "docs_attached": "✔ {n} case document(s) ready in “No Pay Decision Letter & documents”. They will be uploaded "
+                     "with the MoreInfo.",
+    "docs_alert": "Don't forget to upload the No Pay Decision Letter and other documents as applicable (Digital "
+                  "Footprints, Web extractions, Voice Match, Approvals, etc).\n\nYes = upload the MoreInfo now "
+                  "without documents\nNo = go to the documents tab first",
+    "doc_text_only": "Note: Microsoft Word is not available, so “{name}” was saved as a text-only PDF. Check it or "
+                     "upload it again from a PC with Word.",
+    "doc_kept": "Note: Microsoft Word is not available, so “{name}” was uploaded in its original format.",
     "case": "Case #",
     "analyst": "Analyst",
     "output": "Output",
@@ -41,8 +72,6 @@ STRINGS = {key: _en(text) for key, text in {
     "col_section": "Section",
     "col_caption": "Caption",
     "col_size": "Size",
-    "extras": "Extra documents (saved as CASE,MOREINFO1, 2…)",
-    "add_files": "Add files…",
     "create": "Create and save",
     "new_case": "New case",
     "open_folder": "Open output folder",
@@ -57,7 +86,7 @@ STRINGS = {key: _en(text) for key, text in {
     "need_shots": "Add at least one screenshot.",
     "need_selection": "Select a screenshot first.",
     "no_folders": "Add at least one destination folder in “Folders & options” first.",
-    "new_case_confirm": "Clear the screenshots and extra documents to start a new case?",
+    "new_case_confirm": "Clear the screenshots and documents to start a new case?",
     "done_title": "Package ready",
     "engine_word": "PDF created with Microsoft Word.",
     "engine_builtin": "PDF created with the built-in generator (Microsoft Word not used).",
@@ -71,7 +100,6 @@ STRINGS = {key: _en(text) for key, text in {
     "add_folder": "Add folder…",
     "add_path": "Add path…",
     "path_prompt": "Folder path (for example \\\\server\\Fraud\\Packages):",
-    "per_case": "Create a subfolder for each case",
     "use_word": "Use Microsoft Word for the PDF when it is installed (otherwise the built-in generator)",
     "keep_docx": "Also save the Word (.docx) file",
     "base_name": "File name after the case number",

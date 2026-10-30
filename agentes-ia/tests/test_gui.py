@@ -131,6 +131,10 @@ def exercise_moreinfo(app):
     app.case_var.set("12345")
     saved = messagebox.showinfo, messagebox.showwarning
     messagebox.showinfo = messagebox.showwarning = lambda *a, **k: None
+    letter = tmp / "letter.txt"
+    letter.write_text("No pay decision", encoding="utf-8")
+    app.add_documents([str(letter)])
+    assert "1" in app.reminder.cget("text")
     try:
         app.create()
         while app._busy:
@@ -138,7 +142,9 @@ def exercise_moreinfo(app):
             app.after(50)
     finally:
         messagebox.showinfo, messagebox.showwarning = saved
-    assert (tmp / "share" / "12345,MOREINFO.pdf").exists()
+    assert (tmp / "share" / "12345,MOREINFO.pdf").exists() and (tmp / "share" / "12345,MOREINFO1.txt").exists()
+    app.nb.select(1)
+    app.update()
     app.mode.set("excel")
     app._mode_changed()
 

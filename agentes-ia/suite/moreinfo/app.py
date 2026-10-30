@@ -15,8 +15,10 @@ from ..ui import PilotApp, TextBox, open_path
 from . import logic
 from .strings import STRINGS
 
-DEFAULTS = {"folders": [], "per_case": False, "use_word": True, "keep_docx": False, "base": logic.DEFAULT_BASE,
-            "analyst": "", "sections": []}
+DEFAULTS = {"folders": [], "use_word": True, "keep_docx": False, "base": logic.DEFAULT_BASE, "analyst": "",
+            "sections": []}
+BACKGROUND = Path(__file__).resolve().parent / "assets" / "background.jpg"
+DOC_TYPES = ("*.pdf *.docx *.doc *.rtf *.xlsx *.xlsm *.xls *.csv *.txt *.msg *.eml *.png *.jpg *.jpeg")
 POLL_MS = 800
 
 
@@ -53,12 +55,15 @@ class MoreInfoPilot(PilotApp):
         except (OSError, ValueError):
             pass
         self.shots = []
-        self.extras = []
+        self.documents = []
+        self.dnd = self._enable_dnd()
         self._thumb = None
         self._last_clip = None
         self.last_output = None
         self._build_package()
+        self._build_documents()
         self._build_settings()
+        self._build_background()
         self.bind_all("<Control-v>", self._ctrl_v)
         self.after(POLL_MS, self._poll_clipboard)
         for fn in list(self._i18n):  # vuelve a pintar la cabecera en inglés
@@ -66,6 +71,52 @@ class MoreInfoPilot(PilotApp):
 
     def set_lang(self, lang):
         pass
+
+    def _enable_dnd(self):
+        """Arrastrar y soltar archivos (tkdnd). Si no está disponible, la app funciona igual sin él."""
+        try:
+            from tkinterdnd2 import TkinterDnD
+
+            TkinterDnD._require(self)
+            return True
+        except Exception:
+            return False
+
+    def _drop_target(self, widget, handler):
+        if self.dnd:
+            from tkinterdnd2 import DND_FILES
+
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", lambda e: handler(list(self.tk.splitlist(e.data))))
+
+    def _build_background(self):
+        """La foto de fondo se ve alrededor de las pestañas y en la vista previa vacía."""
+        self._bg_source = None
+        try:
+            self._bg_source = Image.open(BACKGROUND).convert("RGB")
+        except OSError:
+            return
+        self.nb.pack_forget()
+        self.bg = tk.Canvas(self, highlightthickness=0, borderwidth=0)
+        self.bg.pack(fill="both", expand=True)
+        self.nb.place(in_=self.bg, x=40, y=30, relwidth=1, relheight=1, width=-80, height=-60)
+        self.nb.lift()
+        self._bg_image = None
+        self.bg.bind("<Configure>", self._paint_background)
+
+    def _paint_background(self, event):
+        try:
+            from PIL import ImageTk
+        except ImportError:
+            return
+        w, h = max(1, event.width), max(1, event.height)
+        src = self._bg_source
+        scale = max(w / src.width, h / src.height)  # cubre toda la ventana sin deformar
+        img = src.resize((int(src.width * scale) + 1, int(src.height * scale) + 1))
+        left, top = (img.width - w) // 2, (img.height - h) // 2
+        self._bg_image = ImageTk.PhotoImage(img.crop((left, top, left + w, top + h)))
+        self.bg.delete("all")
+        self.bg.create_image(0, 0, image=self._bg_image, anchor="nw")
 
     def update_ai_status(self):
         self.ai_label.configure(text=self.t("offline"))
@@ -109,14 +160,12 @@ class MoreInfoPilot(PilotApp):
         self.btn(bottom, "create", self.create, accent=True).pack(side="left")
         self.btn(bottom, "new_case", self.new_case).pack(side="left", padx=6)
         self.btn(bottom, "open_folder", self.open_output).pack(side="left")
-        extras = self.lframe(tab, "extras", padding=6)
-        extras.pack(side="bottom", fill="x", pady=(8, 0))
-        self.extra_list = tk.Listbox(extras, height=2)
-        self.extra_list.pack(side="left", fill="x", expand=True)
-        eb = ttk.Frame(extras)
-        eb.pack(side="left", padx=6)
-        self.btn(eb, "add_files", self.add_extras).pack(fill="x")
-        self.btn(eb, "remove", self.remove_extra).pack(fill="x", pady=(4, 0))
+        self.reminder = tk.Label(tab, bg="#FFF4CE", fg="#7A4F01", anchor="w", justify="left", padx=10, pady=6,
+                                 font=("Segoe UI", 10, "bold"), cursor="hand2")
+        self.reminder.pack(side="bottom", fill="x", pady=(8, 0))
+        self.reminder.bind("<Configure>", lambda e: self.reminder.configure(wraplength=max(200, e.width - 24)))
+        self.reminder.bind("<Button-1>", lambda e: self.nb.select(1))
+        self.tr(self.reminder, "docs_reminder")
 
         panes = ttk.PanedWindow(tab, orient="horizontal")
         panes.pack(fill="both", expand=True)
@@ -146,6 +195,7 @@ class MoreInfoPilot(PilotApp):
         self.btn(tools, "up", lambda: self.move_shot(-1), width=3).pack(side="left")
         self.btn(tools, "down", lambda: self.move_shot(1), width=3).pack(side="left", padx=4)
         self.tree.pack(fill="both", expand=True)
+        self._drop_target(self.tree, self.drop_images)
 
         right = self.lframe(panes, "preview", padding=6)
         panes.add(right, weight=2)
@@ -224,7 +274,10 @@ class MoreInfoPilot(PilotApp):
     def _ctrl_v(self, event):
         if isinstance(event.widget, (tk.Entry, ttk.Entry, tk.Text)):
             return None  # pegar texto normal en los campos
-        self.paste()
+        if self.nb.index("current") == 1:
+            self.paste_documents()
+        else:
+            self.paste()
         return "break"
 
     @staticmethod
@@ -250,6 +303,13 @@ class MoreInfoPilot(PilotApp):
         except Exception:  # el portapapeles puede estar ocupado por otro programa
             pass
         self.after(POLL_MS, self._poll_clipboard)
+
+    def drop_images(self, paths):
+        images = [p for p in paths if p.lower().endswith(logic.IMAGE_TYPES)]
+        if images and self._need_section():
+            for path in images:
+                self.add_shot(path)
+            self.status(self.t("added_n", n=len(images), section=self.current_section))
 
     def add_images(self):
         if not self._need_section():
@@ -297,6 +357,7 @@ class MoreInfoPilot(PilotApp):
         self.canvas.delete("all")
         sel = self.tree.selection()
         if not sel or int(sel[0]) >= len(self.shots):
+            self._preview_background()
             return
         w, h = max(50, self.canvas.winfo_width()), max(50, self.canvas.winfo_height())
         with Image.open(self.shots[int(sel[0])]["shot"].path) as img:
@@ -309,57 +370,171 @@ class MoreInfoPilot(PilotApp):
         self._thumb = ImageTk.PhotoImage(img)
         self.canvas.create_image(w // 2, h // 2, image=self._thumb)
 
-    def add_extras(self):
-        for path in filedialog.askopenfilenames(parent=self):
-            self.extras.append(path)
-            self.extra_list.insert("end", Path(path).name)
+    def _preview_background(self):
+        """Vista previa vacía: la foto de fondo, aclarada."""
+        source = getattr(self, "_bg_source", None)
+        if source is None:
+            return
+        try:
+            from PIL import ImageTk
+        except ImportError:
+            return
+        w, h = max(50, self.canvas.winfo_width()), max(50, self.canvas.winfo_height())
+        img = source.copy()
+        img.thumbnail((w, h))
+        img = Image.blend(img, Image.new("RGB", img.size, "white"), 0.55)
+        self._thumb = ImageTk.PhotoImage(img)
+        self.canvas.create_image(w // 2, h // 2, image=self._thumb)
 
-    def remove_extra(self):
-        for index in reversed(self.extra_list.curselection()):
-            del self.extras[index]
-            self.extra_list.delete(index)
+    # ------------------------------------------------------------ documents tab
+    def _build_documents(self):
+        tab = self.add_tab("tab_documents", padding=10)
+        top = ttk.Frame(tab)
+        top.pack(fill="x")
+        self.lbl(top, "case").pack(side="left")
+        ttk.Entry(top, textvariable=self.case_var, width=18, font=("Segoe UI", 12)).pack(side="left", padx=6)
+        self.lbl(tab, "docs_intro", hint=True, wraplength=1000, justify="left").pack(anchor="w", pady=(8, 6))
+        self.drop_zone = tk.Label(tab, bg="#E8F4F8", fg="#0E7490", font=("Segoe UI", 12, "bold"), height=4,
+                                  relief="groove", borderwidth=2, cursor="hand2")
+        self.drop_zone.pack(fill="x")
+        self.tr(self.drop_zone, "drop_here" if self.dnd else "drop_unavailable")
+        self.drop_zone.bind("<Button-1>", lambda e: self.browse_documents())
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x", pady=8)
+        self.btn(bar, "browse_docs", self.browse_documents, accent=True).pack(side="left")
+        self.btn(bar, "paste_docs", self.paste_documents).pack(side="left", padx=6)
+        self.btn(bar, "remove", self.remove_document).pack(side="left")
+        self.btn(bar, "upload_docs", self.upload_documents).pack(side="right")
+        self.doc_tree = ttk.Treeview(tab, columns=("n", "file", "type", "saved"), show="headings", height=8)
+        for col, width in (("n", 40), ("file", 420), ("type", 120), ("saved", 160)):
+            self.doc_tree.column(col, width=width, stretch=col == "file")
+            self.doc_tree.heading(col, text=self.t(f"dcol_{col}"))
+        self.doc_tree.pack(fill="both", expand=True)
+        self.doc_tree.bind("<Delete>", lambda e: self.remove_document())
+        for widget in (self.drop_zone, self.doc_tree):
+            self._drop_target(widget, self.add_documents)
+
+    def add_documents(self, paths):
+        added = 0
+        for path in paths:
+            if Path(path).is_file() and path not in self.documents:
+                self.documents.append(path)
+                added += 1
+        self._fill_documents()
+        if added:
+            self.status(self.t("docs_added", n=added))
+
+    def _fill_documents(self):
+        self.doc_tree.delete(*self.doc_tree.get_children())
+        for n, path in enumerate(self.documents):
+            ext = Path(path).suffix.lower()
+            target = logic.document_target(path)
+            saved = "PDF" if target == ".pdf" else self.t("same_format")
+            self.doc_tree.insert("", "end", iid=str(n), values=(n + 1, Path(path).name, ext.lstrip(".").upper(),
+                                                                saved))
+        self.reminder.configure(text=self.t("docs_attached", n=len(self.documents)) if self.documents
+                                else self.t("docs_reminder"),
+                                bg="#DFF6DD" if self.documents else "#FFF4CE",
+                                fg="#0B5A2E" if self.documents else "#7A4F01")
+
+    def browse_documents(self):
+        self.add_documents(list(filedialog.askopenfilenames(parent=self, filetypes=[
+            (self.t("doc_types"), DOC_TYPES), (self.t("ft_all"), "*.*")])))
+
+    def paste_documents(self):
+        """Pega archivos copiados en el Explorador, una imagen (se guarda como PDF) o texto (correo, notas)."""
+        try:
+            from PIL import ImageGrab
+
+            data = ImageGrab.grabclipboard()
+        except Exception:
+            data = None
+        folder = Path(tempfile.gettempdir()) / "MoreInfoPilot"
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = f"{datetime.now():%Y%m%d_%H%M%S}"
+        if isinstance(data, list) and data:
+            self.add_documents([str(x) for x in data])
+            return
+        if isinstance(data, Image.Image):
+            path = folder / f"pasted_{stamp}.png"
+            data.convert("RGB").save(path)
+            self.add_documents([str(path)])
+            return
+        try:
+            text = self.clipboard_get()
+        except tk.TclError:
+            text = ""
+        if text.strip():
+            path = folder / f"pasted_text_{stamp}.txt"
+            path.write_text(text, encoding="utf-8")
+            self.add_documents([str(path)])
+            return
+        messagebox.showinfo(self.APP_NAME, self.t("nothing_to_paste"), parent=self)
+
+    def remove_document(self):
+        for iid in sorted((int(i) for i in self.doc_tree.selection()), reverse=True):
+            del self.documents[iid]
+        self._fill_documents()
+
+    def upload_documents(self):
+        """Sube solo los documentos (sin crear el MoreInfo con capturas)."""
+        self._run(include_moreinfo=False)
 
     def new_case(self):
-        if (self.shots or self.extras) and not messagebox.askyesno(self.APP_NAME, self.t("new_case_confirm"),
+        if (self.shots or self.documents) and not messagebox.askyesno(self.APP_NAME, self.t("new_case_confirm"),
                                                                    parent=self):
             return
-        self.shots, self.extras = [], []
-        self.extra_list.delete(0, "end")
+        self.shots, self.documents = [], []
+        self._fill_documents()
         self.case_var.set("")
         self.excel_var.set("")
         self.result.set("")
         self._fill()
 
     def create(self):
-        case = logic.clean_case(self.case_var.get())
         mode = self.mode.get()
-        if not self.need(case, "need_case"):
-            return
         if mode == "excel" and not self.need(self.excel_var.get().strip(), "need_excel"):
             return
         if mode == "pdf" and not self.need(self.shots, "need_shots"):
             return
+        if not self.documents:
+            # recordatorio: el MoreInfo solo no es el paquete completo
+            answer = messagebox.askyesnocancel(self.APP_NAME, self.t("docs_alert"), icon="warning", parent=self)
+            if answer is None:
+                return
+            if answer is False:
+                self.nb.select(1)
+                return
+        self._run(include_moreinfo=True)
+
+    def _run(self, include_moreinfo):
+        case = logic.clean_case(self.case_var.get())
+        if not self.need(case, "need_case"):
+            return
+        if not include_moreinfo and not self.need(self.documents, "need_documents"):
+            return
         folders = list(self.prefs["folders"])
         if not folders:
             messagebox.showwarning(self.APP_NAME, self.t("no_folders"), parent=self)
-            self.nb.select(1)
+            self.nb.select(2)
             return
         self.prefs["analyst"] = self.analyst_var.get().strip()
         self.save_prefs()
-        shots, extras = [item["shot"] for item in self.shots], list(self.extras)
-        p, excel = dict(self.prefs), self.excel_var.get().strip() or None
+        shots, documents = [item["shot"] for item in self.shots], list(self.documents)
+        p, excel, mode = dict(self.prefs), self.excel_var.get().strip() or None, self.mode.get()
 
         def work():
-            return logic.create_package(case, p["analyst"], shots, extras, folders, mode, excel,
-                                        p["base"] or logic.DEFAULT_BASE, p["per_case"], p["use_word"],
-                                        p["keep_docx"])
+            return logic.create_package(case, p["analyst"], shots, documents, folders, mode, excel,
+                                        p["base"] or logic.DEFAULT_BASE, p["use_word"], p["keep_docx"],
+                                        include_moreinfo=include_moreinfo)
 
         self.run_task(work, self._created)
 
     def _created(self, r):
         t = self.t
-        lines = [t("engine_" + r["engine"], sheet=logic.EXCEL_SHEET), "", t("created")]
-        lines += [f"  • {name}" for name in r["names"]]
+        lines = [t("engine_" + r["engine"], sheet=logic.EXCEL_SHEET), ""] if r["engine"] else []
+        lines += [t("created")] + [f"  • {name}" for name in r["names"]]
+        lines += [t(note, name=name) for note, name in r["notes"]]
         if r["copied"]:
             lines += [t("copied_to")] + [f"  • {p}" for p in r["copied"]]
         if r["errors"]:
@@ -408,11 +583,9 @@ class MoreInfoPilot(PilotApp):
 
         opts = ttk.Frame(tab)
         opts.pack(fill="x", pady=10)
-        self.per_case_var = tk.BooleanVar(value=self.prefs["per_case"])
         self.use_word_var = tk.BooleanVar(value=self.prefs["use_word"])
         self.keep_docx_var = tk.BooleanVar(value=self.prefs["keep_docx"])
-        for key, var in (("per_case", self.per_case_var), ("use_word", self.use_word_var),
-                         ("keep_docx", self.keep_docx_var)):
+        for key, var in (("use_word", self.use_word_var), ("keep_docx", self.keep_docx_var)):
             self.chk(opts, key, var).pack(anchor="w", pady=2)
         form = ttk.Frame(tab)
         form.pack(fill="x")
@@ -525,7 +698,7 @@ class MoreInfoPilot(PilotApp):
 
     def save_settings(self):
         base = logic.clean_case(self.base_var.get()) or logic.DEFAULT_BASE
-        self.prefs.update(per_case=bool(self.per_case_var.get()), use_word=bool(self.use_word_var.get()),
+        self.prefs.update(use_word=bool(self.use_word_var.get()),
                           keep_docx=bool(self.keep_docx_var.get()), base=base)
         self.base_var.set(base)
         self.save_prefs()

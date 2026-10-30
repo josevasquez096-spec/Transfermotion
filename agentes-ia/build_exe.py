@@ -37,8 +37,17 @@ SPELL_LANGS = {"MailPilot": ("en", "es", "fr")}
 HIDDEN_IMPORTS = {"MailPilot": ("win32timezone",), "MoreInfoPilot": ("win32timezone",)}
 
 
+# Archivos propios de cada app y librerías que cargan binarios (tkdnd: arrastrar y soltar archivos).
+APP_DATA = {"MoreInfoPilot": ("suite/moreinfo/assets",)}
+COLLECT_ALL = {"MoreInfoPilot": ("tkinterdnd2",)}
+
+
 def extra_args(name):
     args = []
+    for folder in APP_DATA.get(name, ()):
+        args += ["--add-data", f"{ROOT / folder}{os.pathsep}{folder}"]
+    for package in COLLECT_ALL.get(name, ()):
+        args += ["--collect-all", package]
     if name in SPELL_LANGS:
         import spellchecker
 

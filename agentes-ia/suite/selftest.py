@@ -131,8 +131,19 @@ def _moreinfo(out):
     share = out / "share"
     share.mkdir()
     (share / "TEST1,MOREINFO.pdf").write_bytes(b"%PDF")
-    result = logic.create_package("TEST1", "selftest", shots, [shots[0].path], [share], use_word=False)
-    assert sorted(p.name for p in result["copied"]) == ["TEST1,MOREINFO1.pdf", "TEST1,MOREINFO2.pdf"], result
+    letter = out / "letter.docx"
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("No Pay Decision Letter")
+    doc.save(letter)
+    (out / "notes.txt").write_text("email text", encoding="utf-8")
+    result = logic.create_package("TEST1", "selftest", shots, [str(letter), str(out / "notes.txt")], [share],
+                                  use_word=False)
+    assert sorted(p.name for p in result["copied"]) == ["TEST1,MOREINFO1.pdf", "TEST1,MOREINFO2.pdf",
+                                                        "TEST1,MOREINFO3.txt"], result
+    assert (Path(__file__).resolve().parent / "moreinfo" / "assets" / "background.jpg").exists()
+    import tkinterdnd2  # noqa: F401  (arrastrar y soltar incluido en el .exe)
     wb = Workbook()
     wb.active.append(["Date", "Amount"])
     wb.save(out / "txns.xlsx")

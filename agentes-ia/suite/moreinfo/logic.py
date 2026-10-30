@@ -262,13 +262,104 @@ def _xls_workbook(path):
     return wb
 
 
+# ---------------------------------------------------------------- case documents (No Pay Decision Letter…)
+
+WORD_TYPES = (".docx", ".doc", ".rtf", ".odt")
+KEEP_TYPES = (".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".msg", ".eml")  # se suben tal cual
+
+
+def document_target(path):
+    """Extension a document is saved with: Word and images become PDF; Excel, text and emails keep theirs."""
+    ext = Path(path).suffix.lower()
+    if ext in WORD_TYPES or ext in IMAGE_TYPES or ext == ".pdf":
+        return ".pdf"
+    return ext
+
+
+def render_docx_pdf(src, dst, title=""):
+    """Text-only PDF of a .docx (paragraphs and tables) for PCs without Microsoft Word."""
+    from docx import Document
+
+    doc = Document(str(src))
+    lines = []
+    for block in doc.element.body.iterchildren():
+        tag = block.tag.rsplit("}", 1)[-1]
+        if tag == "p":
+            lines.append("".join(t.text or "" for t in block.iter() if t.tag.endswith("}t")))
+        elif tag == "tbl":
+            for row in block.iter():
+                if row.tag.endswith("}tr"):
+                    cells = ["".join(t.text or "" for t in cell.iter() if t.tag.endswith("}t"))
+                             for cell in row if cell.tag.endswith("}tc")]
+                    lines.append(" | ".join(cells))
+            lines.append("")
+    font, bold = _font(20), _font(26, True)
+    pages, page, draw, y = [], None, None, 0
+    max_w = PAGE[0] - 2 * MARGIN
+
+    def new_page():
+        nonlocal page, draw, y
+        page = Image.new("RGB", PAGE, "white")
+        pages.append(page)
+        draw = ImageDraw.Draw(page)
+        y = MARGIN
+
+    new_page()
+    if title:
+        draw.text((MARGIN, y), title, fill="#1F2937", font=bold)
+        y += 50
+    for line in lines:
+        words, current = line.split(" "), ""
+        wrapped = []
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if draw.textlength(candidate, font=font) <= max_w or not current:
+                current = candidate
+            else:
+                wrapped.append(current)
+                current = word
+        wrapped.append(current)
+        for text in wrapped:
+            if y + 30 > PAGE[1] - MARGIN:
+                new_page()
+            draw.text((MARGIN, y), text, fill="black", font=font)
+            y += 30
+        y += 8
+    pages[0].save(dst, "PDF", resolution=150, save_all=True, append_images=pages[1:])
+    return dst
+
+
+def prepare_document(src, dest_pdf, use_word=True):
+    """Saves one case document in the work folder. Returns (saved path, note key or None)."""
+    src, ext = Path(src), Path(src).suffix.lower()
+    if ext == ".pdf":
+        shutil.copy2(src, dest_pdf)
+        return dest_pdf, None
+    if ext in IMAGE_TYPES:
+        return image_to_pdf(src, dest_pdf), None
+    if ext in WORD_TYPES:
+        if use_word:
+            try:
+                return word_to_pdf(src, dest_pdf), None
+            except Exception:  # Word no disponible
+                pass
+        if ext == ".docx":
+            return render_docx_pdf(src, dest_pdf), "doc_text_only"
+        kept = dest_pdf.with_suffix(ext)  # .doc/.rtf sin Word: se sube en su formato
+        shutil.copy2(src, kept)
+        return kept, "doc_kept"
+    dest = dest_pdf.with_suffix(ext)
+    shutil.copy2(src, dest)
+    return dest, None
+
+
 # ---------------------------------------------------------------- delivery
 
-def deliver(files, folders, case, per_case_folder=False):
+def deliver(files, folders):
     """Copies each file to every folder. Returns (copied paths, [(folder, error)])."""
     copied, errors = [], []
     for folder in folders:
-        target = Path(folder) / case if per_case_folder else Path(folder)
+        target = Path(folder)
         try:
             target.mkdir(parents=True, exist_ok=True)
             for f in files:
@@ -282,65 +373,66 @@ def deliver(files, folders, case, per_case_folder=False):
     return copied, errors
 
 
-def destinations(folders, case, per_case_folder):
-    """Folders where numbering must be checked (inside the case subfolder when that option is on)."""
-    return [Path(f) / case if per_case_folder else Path(f) for f in folders]
+def create_package(case, analyst, shots, documents, folders, mode="pdf", excel_source=None, base=DEFAULT_BASE,
+                   use_word=True, keep_docx=False, sheet=EXCEL_SHEET, include_moreinfo=True):
+    """Builds CASE,MOREINFO (+ the case documents, numbered after it) and saves them in the destination folders.
 
-
-def create_package(case, analyst, shots, extras, folders, mode="pdf", excel_source=None, base=DEFAULT_BASE,
-                   per_case_folder=False, use_word=True, keep_docx=False, sheet=EXCEL_SHEET):
-    """Builds the MoreInfo file (+ numbered extras) and saves it straight into the destination folders.
-
+    With include_moreinfo=False only the documents are uploaded (No Pay Decision Letter, Excel, emails…).
     The files are made in a temporary folder that is deleted afterwards (no local copy is kept). Only if no
     destination could be written is that folder kept, so nothing is lost: its path is returned in "kept".
-    Returns a dict with the file names, copied paths, errors, PDF engine and "kept"."""
+    Returns a dict with the file names, copied paths, errors, PDF engine, notes and "kept"."""
     case = clean_case(case)
     if not case:
         raise ValueError("Enter the case number.")
     if not folders:
         raise ValueError("Add at least one destination folder.")
-    if mode == "excel" and not excel_source:
+    if include_moreinfo and mode == "excel" and not excel_source:
         raise ValueError("Choose the transaction Excel file.")
-    if mode == "pdf" and not shots:
+    if include_moreinfo and mode == "pdf" and not shots:
         raise ValueError("Add at least one screenshot.")
+    if not include_moreinfo and not documents:
+        raise ValueError("Add at least one document.")
     work = Path(tempfile.mkdtemp(prefix=f"moreinfo_{case}_"))
-    main_ext = ".xlsx" if mode == "excel" else ".pdf"
-    if mode == "excel" and Path(excel_source).suffix.lower() == ".xlsm":
-        main_ext = ".xlsm"
-    extra_exts = [".pdf" if Path(e).suffix.lower() in IMAGE_TYPES + (".pdf",) else Path(e).suffix for e in extras]
-    names = next_names(case, base, destinations(folders, case, per_case_folder), [main_ext] + extra_exts)
-    created, engine = [], None
-    main = work / names[0]
-    if mode == "excel":
-        build_excel(excel_source, main, case, analyst, shots, sheet)
-        engine = "excel"
-    else:
-        docx = work / (Path(names[0]).stem + ".docx")
-        build_docx(docx, case, analyst, shots)
-        engine = "builtin"
-        if use_word:
-            try:
-                word_to_pdf(docx, main)
-                engine = "word"
-            except Exception:  # Word no disponible: se usa el generador propio
-                engine = "builtin"
-        if engine == "builtin":
-            render_pdf(main, case, analyst, shots)
-        if keep_docx:
-            created.append(docx)
-    created.insert(0, main)
-    for extra, name in zip(extras, names[1:], strict=True):
-        dest = work / name
-        if Path(extra).suffix.lower() in IMAGE_TYPES:
-            image_to_pdf(extra, dest)
+    exts = []
+    if include_moreinfo:
+        main_ext = ".xlsx" if mode == "excel" else ".pdf"
+        if mode == "excel" and Path(excel_source).suffix.lower() == ".xlsm":
+            main_ext = ".xlsm"
+        exts.append(main_ext)
+    exts += [document_target(d) for d in documents]
+    names = next_names(case, base, [Path(f) for f in folders], exts)
+    created, engine, notes = [], None, []
+    if include_moreinfo:
+        main = work / names[0]
+        if mode == "excel":
+            build_excel(excel_source, main, case, analyst, shots, sheet)
+            engine = "excel"
         else:
-            shutil.copy2(extra, dest)
-        created.append(dest)
-    copied, errors = deliver(created, folders, case, per_case_folder)
+            docx = work / (Path(names[0]).stem + ".docx")
+            build_docx(docx, case, analyst, shots)
+            engine = "builtin"
+            if use_word:
+                try:
+                    word_to_pdf(docx, main)
+                    engine = "word"
+                except Exception:  # Word no disponible: se usa el generador propio
+                    engine = "builtin"
+            if engine == "builtin":
+                render_pdf(main, case, analyst, shots)
+            if keep_docx:
+                created.append(docx)
+        created.insert(0, main)
+        names = names[1:]
+    for doc, name in zip(documents, names, strict=True):
+        saved, note = prepare_document(doc, work / Path(name).with_suffix(".pdf").name, use_word)
+        if note:
+            notes.append((note, Path(doc).name))
+        created.append(saved)
+    copied, errors = deliver(created, folders)
     kept = None
     if copied:
         shutil.rmtree(work, ignore_errors=True)
     else:
         kept = work  # ninguna carpeta disponible: se conserva para no perder el trabajo
     return {"names": [f.name for f in created], "copied": copied, "errors": errors, "engine": engine,
-            "case": case, "kept": kept}
+            "case": case, "kept": kept, "notes": notes}

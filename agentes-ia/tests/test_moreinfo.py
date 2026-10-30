@@ -53,14 +53,49 @@ def test_pdf_package_is_numbered_and_copied(tmp_path):
         "Transactions", "Profile", "Cards", "Claim information"]
 
 
-def test_per_case_folder_and_existing_file(tmp_path):
+def test_existing_file_continues_numbering(tmp_path):
     share = tmp_path / "share"
-    logic.create_package("888", "", shots(tmp_path)[:1], [], [share], tmp_path / "work",
-                                  per_case_folder=True, use_word=False)
-    assert (share / "888" / "888,MOREINFO.pdf").exists()
-    again = logic.create_package("888", "", shots(tmp_path)[:1], [], [share], per_case_folder=True,
-                                 use_word=False)
+    logic.create_package("888", "", shots(tmp_path)[:1], [], [share], use_word=False)
+    again = logic.create_package("888", "", shots(tmp_path)[:1], [], [share], use_word=False)
     assert again["names"] == ["888,MOREINFO1.pdf"] and not again["errors"]
+    assert sorted(p.name for p in share.iterdir()) == ["888,MOREINFO.pdf", "888,MOREINFO1.pdf"]
+
+
+def test_case_documents_keep_or_convert_format(tmp_path):
+    share = tmp_path / "share"
+    letter = tmp_path / "No pay letter.docx"
+    doc = Document()
+    doc.add_paragraph("We have completed the review of your claim.")
+    table = doc.add_table(rows=1, cols=2)
+    table.rows[0].cells[0].text, table.rows[0].cells[1].text = "Amount", "$120.00"
+    doc.save(letter)
+    pdf = tmp_path / "footprint.pdf"
+    logic.image_to_pdf(_png(tmp_path), pdf)
+    sheet = tmp_path / "voice match.xlsx"
+    Workbook().save(sheet)
+    email = tmp_path / "approval.msg"
+    email.write_bytes(b"msg")
+    text = tmp_path / "web extraction.txt"
+    text.write_text("extract", encoding="utf-8")
+    old_doc = tmp_path / "old.doc"
+    old_doc.write_bytes(b"doc")
+    documents = [str(x) for x in (letter, pdf, sheet, email, text, old_doc)]
+    result = logic.create_package("4321", "", shots(tmp_path)[:1], documents, [share], use_word=False)
+    assert result["names"] == ["4321,MOREINFO.pdf", "4321,MOREINFO1.pdf", "4321,MOREINFO2.pdf",
+                               "4321,MOREINFO3.xlsx", "4321,MOREINFO4.msg", "4321,MOREINFO5.txt",
+                               "4321,MOREINFO6.doc"]
+    assert result["notes"] == [("doc_text_only", "No pay letter.docx"), ("doc_kept", "old.doc")]
+    assert (share / "4321,MOREINFO1.pdf").read_bytes().startswith(b"%PDF")
+    only = logic.create_package("4321", "", [], [str(text)], [share], include_moreinfo=False)
+    assert only["names"] == ["4321,MOREINFO7.txt"] and only["engine"] is None
+    with pytest.raises(ValueError):
+        logic.create_package("4321", "", [], [], [share], include_moreinfo=False)
+
+
+def _png(tmp_path, name="img.png"):
+    path = tmp_path / name
+    Image.new("RGB", (200, 100), "white").save(path)
+    return path
 
 
 def test_excel_package_adds_tab(tmp_path):

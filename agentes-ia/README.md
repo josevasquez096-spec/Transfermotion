@@ -15,7 +15,7 @@ funcionan **sin internet**. El idioma se cambia en cualquier momento desde la ca
 | **SlidePilot** (PowerPoint) | Presentaciones en minutos | Esquema de texto → .pptx con 6 temas y 8 diseños (viñetas, KPI, gráfico nativo, columnas, línea de tiempo, cita, tabla, separador), Word → diapositivas, Excel → gráficos, vista previa | Presentación completa desde un tema o tu material, con notas del orador |
 | **IcePilot** (icebreakers para Teams) | Juegos personalizables para reuniones | 12 juegos: quiz tipo Kahoot, verdadero/falso, trivia por categorías, ahorcado, adivina con emojis, palabras desordenadas, serpientes y escaleras por equipos, ruleta, bingo, sopa de letras, dos verdades y una mentira, ¿qué prefieres? · contenido de ejemplo de **fraudes recurrentes** y rompehielos · exporta a HTML, PowerPoint y Word | Crear preguntas o palabras sobre cualquier tema (opcional, requiere internet) |
 | **MailPilot** (Outlook) | Ordenar el correo, encontrar lo importante y escribir mejor en inglés | Carpetas de tu buzón, **buzones compartidos** y archivos .pst · **búsqueda avanzada** (palabras, frases, `from:`, `asunto:`, `has:card`, `is:phishing`, fechas, tamaño, expresiones regulares…) · **etiquetas** (categorías de Outlook) y etiquetado en lote · **reglas** que se prueban antes de aplicarlas y se pueden crear como reglas de Outlook · **corrector de inglés** (ortografía, gramática, errores típicos de hispanohablantes, estilo y tono) que corrige el borrador abierto sin perder el formato · frases y plantillas · **phishing**, tarjetas e IBAN enviados en claro, índice de reclamaciones | Mejorar o traducir un correo al inglés con el tono elegido, resumir un correo y proponer respuesta, sugerir reglas para ordenar el buzón |
-| **MoreInfo Pilot** (Fraud Package, en inglés) | Crear el MoreInfo del caso con las capturas | Pegar capturas (Ctrl+V o automático al usar Win+Shift+S) en **secciones con el nombre que tú elijas** (se guardan para cada caso nuevo) → Word → **`CASE,MOREINFO.pdf`** (con Word si está instalado o con su propio generador) · modo **Excel**: añade la pestaña **«Additional info»** con las capturas al archivo de transacciones descargado · documentos extra numerados (`CASE,MOREINFO1.pdf`, `CASE,MOREINFO2.pdf`…) · copia automática a las carpetas configuradas (de red o locales), opcionalmente en una subcarpeta por caso | — |
+| **MoreInfo Pilot** (Fraud Package, en inglés) | Crear el MoreInfo del caso con las capturas | Pegar capturas (Ctrl+V o automático al usar Win+Shift+S) en **secciones con el nombre que tú elijas** (se guardan para cada caso nuevo) → Word → **`CASE,MOREINFO.pdf`** (con Word si está instalado o con su propio generador) · modo **Excel**: añade la pestaña **«Additional info»** con las capturas al archivo de transacciones descargado · documentos extra numerados (`CASE,MOREINFO1.pdf`, `CASE,MOREINFO2.pdf`…) · pestaña para la **No Pay Decision Letter** y demás documentos (arrastrar, pegar o examinar; Word → PDF, Excel/TXT/correos en su formato) · copia automática a las carpetas configuradas | — |
 | **FraudPilot** (reclamaciones de fraude) | Registrar, priorizar y responder reclamaciones | Tipología (phishing, SIM swap, toma de cuenta, tarjeta clonada, estafa con pago autorizado, disputa comercial…), prioridad, señales de alerta, acciones, documentos y **plazos configurables**; registro de casos con vencimientos; **cartas** en 3 idiomas; **análisis masivo** (duplicados, reclamantes recurrentes, avisos tardíos, comercios con picos = posible punto de compromiso) | Análisis del relato del cliente (hechos, inconsistencias, preguntas), mejora de cartas, informe de patrones |
 
 Todo lo marcado sin ✨ funciona **sin internet y sin clave de IA**. Cada app incluye datos de ejemplo
@@ -27,6 +27,7 @@ Los ejecutables se crean automáticamente en GitHub (flujo `.github/workflows/ag
 
 1. En GitHub, abre **Actions → «Agentes IA (.exe para Windows)»** y entra en la última ejecución correcta.
 2. Descarga el artefacto **PilotSuite-Windows** (un .zip con los 8 `.exe`).
+   También hay artefactos individuales: **MoreInfoPilot-Windows** e **IcePilot-Windows** (solo ese `.exe`).
 3. Si subes una etiqueta `agentes-v1.0.0`, los `.exe` también se publican en **Releases**.
 
 Antes de publicarse, cada `.exe` se prueba en Windows con `--selftest` (genera sus archivos de ejemplo).
@@ -110,17 +111,24 @@ opción «Mayúsculas y acentos exactos» (que deja filtrar primero a Outlook) l
 ## MoreInfo Pilot: archivo MoreInfo del Fraud Package
 
 1. En **⚙ Folders & options** añade las carpetas donde se guarda el paquete (por ejemplo `\\servidor\Fraude\Packages`)
-   y, si quieres, una subcarpeta por caso. Crea también tus **secciones** (nombre y orden, por ejemplo «Customer
-   profile», «Cards», «Claim details»); se pueden renombrar, ordenar o quitar, y se guardan para todos los casos.
-   Las opciones se guardan en `%APPDATA%\PilotSuite\moreinfo.json`.
-2. Escribe el **Case #**, elige la sección (o crea una con ＋) y pega cada captura con **Ctrl+V** (o activa *Auto-add* y ve haciendo
-   Win+Shift+S en cada pantalla o aplicación: cada captura nueva se añade sola). Puedes poner un pie a cada una.
-3. Elige la salida: **Word → PDF** o **Excel** (elige el archivo de transacciones descargado; se le añade la pestaña
-   **«Additional info»** con las capturas, sin tocar las demás pestañas). Añade documentos extra si los hay.
-4. **Create and save**: se crea `CASE,MOREINFO.pdf` (o `.xlsx`) y los extras como `CASE,MOREINFO1…`, y se copian a
-   todas las carpetas. Si el caso ya tiene un MoreInfo en alguna carpeta, el número sigue (`CASE,MOREINFO1.pdf`…),
-   nunca se sobrescribe nada. No se guarda copia local: los archivos se crean en una carpeta temporal y se borran
-   tras copiarlos (solo si no se pudo escribir en ninguna carpeta se conservan y la app indica dónde).
+   y crea tus **secciones** (nombre y orden, por ejemplo «Customer profile», «Cards», «Claim details»); se pueden
+   renombrar, ordenar o quitar, y se guardan para todos los casos (`%APPDATA%\PilotSuite\moreinfo.json`).
+2. En **📎 MoreInfo package** escribe el **Case #**, elige la sección (o crea una con ＋) y pega cada captura con
+   **Ctrl+V**, arrástrala a la lista o activa *Auto-add* y ve haciendo Win+Shift+S en cada pantalla o aplicación.
+   Puedes poner un pie a cada una. Elige la salida: **Word → PDF** o **Excel** (al archivo de transacciones
+   descargado se le añade la pestaña **«Additional info»** con las capturas, sin tocar las demás).
+3. En **📄 No Pay Decision Letter & documents** añade la carta de No Pay y los demás documentos del caso (Digital
+   Footprints, Web extractions, Voice Match, Approvals…): **arrástralos**, **pégalos** (Ctrl+V con archivos copiados
+   en el Explorador, una imagen o el texto de un correo) o búscalos en el PC. Los Word e imágenes se guardan en PDF;
+   PDF, Excel (.xlsx/.xls/.csv), texto (.txt) y correos (.msg/.eml) conservan su formato.
+4. **Create and save**: se crea `CASE,MOREINFO.pdf` (o `.xlsx`) y los documentos como `CASE,MOREINFO1…`,
+   `CASE,MOREINFO2…`, todo en las mismas carpetas. Si no añadiste documentos, la app recuerda subir la No Pay
+   Decision Letter y los demás. «Upload documents only» sube solo los documentos. Si el caso ya tiene archivos en la
+   carpeta, el número sigue: nunca se sobrescribe nada. No se guarda copia local (solo si no se pudo escribir en
+   ninguna carpeta se conservan y la app indica dónde).
+
+Sin Microsoft Word, los Word se convierten a un PDF solo de texto (y los .doc antiguos se suben en su formato); la
+app lo indica en el resultado.
 
 ## FraudPilot: notas importantes
 
