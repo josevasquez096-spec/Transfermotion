@@ -144,8 +144,19 @@ def exercise_moreinfo(app):
     app.template_combo.current(0)
     dialog = app.fill_letter()
     dialog.widgets["cc:customername"].insert(0, "Laura Méndez")
+    reasons = dialog.widgets["cc:reason"]["values"]
+    dialog.widgets["cc:reason"].set(reasons[0])
+    field = next(f for f in dialog.fields if f.key == "cc:reason")
+    dialog.add_value(field, dialog.add_buttons["cc:reason"].master, reasons[2])
+    extra = dialog.add_value(field, dialog.add_buttons["cc:reason"].master, reasons[3])
+    dialog.remove_value("cc:reason", extra.master, extra)  # ✕ quita una razón
+    app.update()
+    assert dialog.filled()["cc:reason"] == [reasons[0], reasons[2]]
     app.letter_ready(dialog.template, dialog.filled())
     dialog.destroy()
+    again = app.fill_letter(app._template_by_name("Credit card - English"), app.documents[0]["values"])
+    assert again.values()["cc:reason"] == [reasons[0], reasons[2]]  # al volver a editar se conservan
+    again.destroy()
     assert "2" in app.reminder.cget("text") and app.documents[0]["letter"]
     assert app.documents[0]["values"]["cc:customername"] == "Laura Méndez" and not app.documents[0]["previewed"]
     try:

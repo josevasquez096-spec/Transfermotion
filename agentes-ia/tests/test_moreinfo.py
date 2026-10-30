@@ -280,3 +280,74 @@ def test_two_controls_bound_to_the_same_data_are_one_field(tmp_path):
     assert len(bound) == 1 and bound[0].count == 2 and bound[0].label == "Customer name"
     out = letter.fill(template, {bound[0].key: "Emma Wilson"}, tmp_path / "out.docx")
     assert _all_text(out).count("Emma Wilson") == 2
+
+
+REASONS = ("Chip and PIN used", "Known device", "OTP verified")
+
+
+def _lines(path):
+    """(estilo, texto) de cada párrafo, también los que están dentro de controles de contenido."""
+    from suite.moreinfo import letter
+
+    w = f"{{{letter.W_NS}}}"
+    out = []
+    for p in Document(path).element.body.iter(w + "p"):
+        style = p.find(f"{w}pPr/{w}pStyle")
+        text = "".join(t.text or "" for t in p.iter(w + "t"))
+        out.append((style.get(w + "val") if style is not None else None, text))
+    return out
+
+
+def _dropdown(tag, items=REASONS):
+    from suite.moreinfo import letter
+
+    return letter._sdt_xml(tag, tag, "dropdown", items, placeholder="Select a reason")
+
+
+def test_several_reasons_in_a_word_repeating_section(tmp_path):
+    """Como la plantilla del banco: la razón está en una sección repetible de Word (Reasons → Reason)."""
+    from lxml import etree
+
+    from suite.moreinfo import letter
+
+    w, w15 = letter.W_NS, letter.W15_NS
+    doc = Document()
+    doc.add_paragraph("Your claim has been declined for the following reason(s):")
+    section = etree.fromstring(
+        f'<w:sdt xmlns:w="{w}" xmlns:w15="{w15}"><w:sdtPr><w:alias w:val="Reasons"/><w:id w:val="5"/>'
+        f'<w15:repeatingSection/></w:sdtPr><w:sdtContent><w:sdt><w:sdtPr><w:id w:val="6"/>'
+        f'<w15:repeatingSectionItem/></w:sdtPr><w:sdtContent><w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr>'
+        f'<w:bookmarkStart w:id="1" w:name="reason"/><w:bookmarkEnd w:id="1"/></w:p>'
+        f'</w:sdtContent></w:sdt></w:sdtContent></w:sdt>')
+    section.find(f".//{{{w}}}p").append(etree.fromstring(_dropdown("Reason")))
+    doc.add_paragraph("Sincerely,")._p.addprevious(section)
+    doc.save(tmp_path / "t.docx")
+    (reason,) = letter.scan(tmp_path / "t.docx")
+    assert reason.multi and reason.options == list(REASONS)
+    out = letter.fill(tmp_path / "t.docx", {reason.key: list(REASONS)}, tmp_path / "out.docx")
+    paragraphs = [text for _, text in _lines(out)]
+    assert paragraphs[1:4] == list(REASONS) and paragraphs[-1] == "Sincerely,"
+    xml = __import__("zipfile").ZipFile(out).read("word/document.xml").decode()
+    assert xml.count("repeatingSectionItem") == 3 and xml.count('w:name="reason"') == 1
+    assert "urn:moreinfo-pilot" not in xml and "PlaceholderText" not in xml
+    assert letter.scan(out)[0].count == 3
+
+
+def test_several_reasons_in_bullets_and_inline(tmp_path):
+    from suite.moreinfo import letter
+
+    doc = Document()
+    doc.add_paragraph("Declined because:")
+    doc.add_paragraph(style="List Bullet")._p.append(__import__("lxml.etree").etree.fromstring(_dropdown("Reason")))
+    doc.add_paragraph("Province: ")._p.append(__import__("lxml.etree").etree.fromstring(_dropdown("Province")))
+    doc.save(tmp_path / "t.docx")
+    reason, province = letter.scan(tmp_path / "t.docx")
+    assert reason.multi and not province.multi  # en una frase: un solo valor
+    out = letter.fill(tmp_path / "t.docx", {reason.key: ["Known device", "OTP verified"],
+                                            province.key: "ON"}, tmp_path / "out.docx")
+    assert _lines(out)[1:] == [("ListBullet", "Known device"), ("ListBullet", "OTP verified"),
+                               (None, "Province: ON")]
+    # un solo valor en forma de lista, o varios valores en un campo de frase: se escriben juntos
+    out = letter.fill(tmp_path / "t.docx", {reason.key: ["Known device"], province.key: ["ON", "QC"]},
+                      tmp_path / "out2.docx")
+    assert [text for _, text in _lines(out)][1:] == ["Known device", "Province: ON; QC"]

@@ -53,9 +53,11 @@ STRINGS = {key: _en(text) for key, text in {
                           "date) or placeholders like [Customer Name].",
     "letter_title": "No Pay Decision Letter",
     "letter_intro": "Fill in the fields of the letter. A field marked ×2, ×3… appears several times in the letter "
-                    "(for example the customer name, also shown as a title): type it once. The letter is saved as "
-                    "PDF in the letter folders when you upload.",
+                    "(for example the customer name, also shown as a title): type it once. Use “＋ Add another” to "
+                    "choose more than one option (for example several reasons). The letter is saved as PDF in the "
+                    "letter folders when you upload.",
     "letter_add": "Add letter to the documents",
+    "letter_add_more": "＋ Add another",
     "letter_missing": "These fields are empty: {names}.\n\nAdd the letter anyway?",
     "letter_added": "Decision letter added to the documents (it will be saved as PDF in the letter folders).",
     "same_format": "Same format",

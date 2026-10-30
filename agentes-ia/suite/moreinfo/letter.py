@@ -6,12 +6,16 @@ Fields that are detected (and filled in place, keeping the template's layout):
   value: type the customer name once and it appears everywhere (for example also as a title further down).
 - Legacy form fields (FORMTEXT and FORMDROPDOWN) and REF fields that repeat them.
 - Placeholders written in the text: [Customer Name] or {{Customer Name}}.
+
+Several values for one field (for example more than one decline reason): allowed when the control is inside a Word
+repeating section, or when a drop-down is alone on its line (a bullet). Each extra value repeats that item or line.
 """
 
 import re
 import shutil
 import tempfile
 import zipfile
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +23,9 @@ from lxml import etree
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml"
+W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml"
+DONE = "{urn:moreinfo-pilot}done"  # marcas temporales: control ya rellenado / control copiado
+COPY = "{urn:moreinfo-pilot}copy"
 W = f"{{{W_NS}}}"
 PARTS = re.compile(r"word/(document|header\d*|footer\d*)\.xml")
 PLACEHOLDER = re.compile(r"\{\{\s*([^{}\n]{1,60}?)\s*\}\}|\[([^\[\]\n]{2,60})\]")
@@ -32,6 +39,7 @@ class Field:
     options: list = field(default_factory=list)
     value: str = ""
     count: int = 1  # veces que aparece en la carta
+    multi: bool = False  # admite varios valores (p. ej. varias razones)
 
 
 def _val(el, name):
@@ -74,6 +82,35 @@ def _sdt_key(pr, index):
     return f"cc:#{index}", None
 
 
+def _repeat_unit(sdt, kind):
+    """What is repeated for each extra value: the Word repeating-section item that holds the control or, for a
+    drop-down alone on its line (a bullet), that paragraph. None when the field takes a single value."""
+    for ancestor in sdt.iterancestors(W + "sdt"):
+        pr = ancestor.find(W + "sdtPr")
+        if pr is not None and pr.find(f"{{{W15_NS}}}repeatingSectionItem") is not None:
+            return ancestor
+    paragraph = sdt.getparent()
+    if kind not in ("dropdown", "combo") or paragraph is None or paragraph.tag != W + "p":
+        return None
+    others = [el for el in paragraph if el is not sdt and el.tag != W + "pPr"]
+    if any(el.tag in (W + "sdt", W + "fldSimple") or el.find(".//" + W + "fldChar") is not None for el in others):
+        return None
+    if re.sub(r"[\s.,;:•\-–]", "", "".join(_text(el) for el in others)):
+        return None
+    return paragraph
+
+
+def _kind(pr):
+    if pr.find(W + "date") is not None:
+        return "date", []
+    for tag, k in (("dropDownList", "dropdown"), ("comboBox", "combo")):
+        lst = pr.find(W + tag)
+        if lst is not None:
+            options = [i.get(W + "displayText") or i.get(W + "value") or "" for i in lst.findall(W + "listItem")]
+            return k, [o for o in options if o.strip()]
+    return "text", []
+
+
 def _form_fields(tree):
     """Legacy form fields: (paragraph, begin run, ffData, result runs) for each field."""
     for paragraph in tree.iter(W + "p"):
@@ -109,34 +146,27 @@ def scan(path):
     """Fields of the template, in the order they appear, merged when they share a name."""
     fields, order = {}, []
 
-    def add(key, label, kind="text", options=(), value=""):
+    def add(key, label, kind="text", options=(), value="", multi=False):
         if key in fields:
             fields[key].count += 1
+            fields[key].multi |= multi
             for option in options:
                 if option not in fields[key].options:
                     fields[key].options.append(option)
             return
-        fields[key] = Field(key, (label or key.split(":", 1)[1]).strip(), kind, list(options), value)
+        fields[key] = Field(key, (label or key.split(":", 1)[1]).strip(), kind, list(options), value, multi=multi)
         order.append(key)
 
     with zipfile.ZipFile(path) as zf:
         for name in _parts(zf):
             tree = etree.fromstring(zf.read(name))
-            for n, (_sdt, pr, content) in enumerate(_leaf_sdts(tree)):
+            for n, (sdt, pr, content) in enumerate(_leaf_sdts(tree)):
                 key, label = _sdt_key(pr, f"{name}{n}")
                 showing = pr.find(W + "showingPlcHdr") is not None
                 current = "" if showing else _text(content).strip()
-                kind, options = "text", []
-                for tag, k in (("dropDownList", "dropdown"), ("comboBox", "combo")):
-                    lst = pr.find(W + tag)
-                    if lst is not None:
-                        kind = k
-                        options = [i.get(W + "displayText") or i.get(W + "value") or ""
-                                   for i in lst.findall(W + "listItem")]
-                        options = [o for o in options if o.strip()]
-                if pr.find(W + "date") is not None:
-                    kind = "date"
-                add(key, label or _text(content).strip() or f"Field {len(order) + 1}", kind, options, current)
+                kind, options = _kind(pr)
+                add(key, label or _text(content).strip() or f"Field {len(order) + 1}", kind, options, current,
+                    multi=_repeat_unit(sdt, kind) is not None)
             for ff in _form_fields(tree):
                 data = ff["ff"]
                 if data is None:
@@ -257,19 +287,75 @@ def _fill_placeholders(paragraph, values):
         t.text = ""
 
 
+def _flat(value):
+    return "; ".join(v for v in value if v) if isinstance(value, (list, tuple)) else value
+
+
+def _clean_clone(element):
+    """A repeated item must not reuse the ids and bookmarks of the original."""
+    for pr in element.iter(W + "sdtPr"):
+        for el in pr.findall(W + "id"):
+            pr.remove(el)
+    for tag in ("bookmarkStart", "bookmarkEnd"):
+        for el in list(element.iter(W + tag)):
+            el.getparent().remove(el)
+    for el in element.iter(W + "p"):
+        for attr in (f"{{{W14_NS}}}paraId", f"{{{W14_NS}}}textId"):
+            el.attrib.pop(attr, None)
+
+
+def _repeat_values(tree, name, values):
+    """Fields with several values: the item (or bullet line) is repeated once per extra value, in order."""
+    for n, (sdt, pr, content) in enumerate(list(_leaf_sdts(tree))):
+        key, _ = _sdt_key(pr, f"{name}{n}")
+        value = values.get(key)
+        if not isinstance(value, (list, tuple)) or len([v for v in value if v]) < 2 or sdt.get(DONE):
+            continue
+        unit = _repeat_unit(sdt, _kind(pr)[0])
+        if unit is None:
+            continue
+        items = [v for v in value if v]
+        anchor = unit
+        for item in items[1:]:
+            clone = deepcopy(unit)
+            _clean_clone(clone)
+            for c_sdt, c_pr, c_content in _leaf_sdts(clone):
+                c_sdt.set(COPY, "1")
+                if _sdt_key(c_pr, "")[0] == key:
+                    _fill_sdt(c_pr, c_content, item)
+                    c_sdt.set(DONE, "1")
+            anchor.addnext(clone)
+            anchor = clone
+        _fill_sdt(pr, content, items[0])
+        sdt.set(DONE, "1")
+
+
 def fill(template, values, dest):
-    """Writes a copy of the template with the values (dict key → text). Returns dest."""
+    """Writes a copy of the template with the values (dict key → text, or a list of texts for a field that takes
+    several values). Returns dest."""
     template, dest = Path(template), Path(dest)
+    multi, values = values, {k: _flat(v) for k, v in values.items()}
     bookmarks = {}  # nombre de marcador → clave, para los campos REF que repiten un valor
     bindings = []  # (storeItemID, xpath, prefixMappings, value)
     with zipfile.ZipFile(template) as zf:
         contents = {n: zf.read(n) for n in zf.namelist()}
     trees = {n: etree.fromstring(contents[n]) for n in _parts(zipfile.ZipFile(template))}
     for name, tree in trees.items():
-        for n, (sdt, pr, content) in enumerate(_leaf_sdts(tree)):
-            key, _ = _sdt_key(pr, f"{name}{n}")
+        _repeat_values(tree, name, multi)
+        n = 0
+        for sdt, pr, content in list(_leaf_sdts(tree)):
+            copy, done = sdt.attrib.pop(COPY, None), sdt.attrib.pop(DONE, None)
+            if copy or done:
+                etree.cleanup_namespaces(sdt)  # sin rastro de las marcas temporales
+            if copy is None:  # las copias no cuentan para los controles sin nombre
+                key, _ = _sdt_key(pr, f"{name}{n}")
+                n += 1
+            else:
+                key, _ = _sdt_key(pr, "")
             for mark in sdt.iter(W + "bookmarkStart"):
                 bookmarks[(mark.get(W + "name") or "").lower()] = key
+            if done:
+                continue
             if key in values:
                 _fill_sdt(pr, content, values[key])
                 binding = pr.find(W + "dataBinding")
@@ -364,8 +450,8 @@ def make_sample_template(path):
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(11)
 
-    def para(*pieces, bold=False, size=None):
-        p = doc.add_paragraph()
+    def para(*pieces, bold=False, size=None, style=None):
+        p = doc.add_paragraph(style=style)
         for piece in pieces:
             if piece.startswith("<w:sdt"):
                 p._p.append(etree.fromstring(piece))
@@ -383,10 +469,11 @@ def make_sample_template(path):
     para("Dear ", _sdt_xml("CustomerName", "Customer name"), ",")
     para("We have completed the investigation of your claim regarding the transaction(s) of ",
          _sdt_xml("Amount", "Disputed amount"), " at ", _sdt_xml("Merchant", "Merchant"), ".")
-    para("After careful review, we are unable to refund the disputed amount for the following reason: ",
-         _sdt_xml("Reason", "Decision reason", "dropdown",
+    para("After careful review, we are unable to refund the disputed amount for the following reason(s):")
+    para(_sdt_xml("Reason", "Decision reason", "dropdown",
                   ("Transaction authorized with the card and PIN", "Card was in the customer's possession",
-                   "Merchant provided proof of delivery", "Claim filed after the allowed time")), ".")
+                   "Merchant provided proof of delivery", "Claim filed after the allowed time")),
+         style="List Bullet")  # una viñeta por razón: «＋ Add another» añade más
     para("Channel of the transaction: ", _sdt_xml("Channel", "Channel", "combo",
                                                   ("Card present", "Online", "ATM", "Mobile banking")), ".")
     para("If you do not agree with this decision, you may reply within 15 business days with any additional "

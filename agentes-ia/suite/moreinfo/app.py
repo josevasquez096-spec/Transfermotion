@@ -952,6 +952,7 @@ class LetterDialog(tk.Toplevel):
     def __init__(self, app, template, fields, values=None):
         super().__init__(app)
         self.app, self.template, self.fields, self.widgets = app, template, fields, {}
+        self.more, self.add_buttons = {}, {}  # campos con varios valores: entradas extra y botón «＋»
         self.previewed = None
         self.title(f"{app.t('letter_title')} – {template['name']}")
         self.transient(app)
@@ -974,7 +975,8 @@ class LetterDialog(tk.Toplevel):
         language = letter.language(app._template_file(template))
         for row, f in enumerate(fields):
             label = f.label + (f"  (×{f.count})" if f.count > 1 else "")
-            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
+            ttk.Label(form, text=label).grid(row=row, column=0, sticky="nw" if f.multi else "w", padx=(0, 10),
+                                             pady=(10 if f.multi else 4, 4))
             value, lower = (values or {}).get(f.key, f.value), f.label.lower()
             if not value and any(w in lower for w in ("case", "claim", "dossier", "réclamation")) and case:
                 value = case
@@ -982,17 +984,63 @@ class LetterDialog(tk.Toplevel):
                 value = analyst
             elif not value and f.kind == "date":
                 value = letter.today(language)
-            if f.kind in ("dropdown", "combo"):
-                widget = ttk.Combobox(form, values=f.options, state="readonly" if f.kind == "dropdown" else "normal")
-                widget.set(value if value in f.options or f.kind == "combo" else "")
-            else:
-                widget = ttk.Entry(form)
-                widget.insert(0, value)
-            widget.grid(row=row, column=1, sticky="ew", pady=4, padx=(0, 6))
-            self.widgets[f.key] = widget
+            if not f.multi:
+                widget = self._input(form, f, value)
+                widget.grid(row=row, column=1, sticky="ew", pady=4, padx=(0, 6))
+                self.widgets[f.key] = widget
+                continue
+            # varios valores (p. ej. varias razones): una línea por valor y «＋ Add another»
+            box = ttk.Frame(form)
+            box.grid(row=row, column=1, sticky="ew", pady=4, padx=(0, 6))
+            box.columnconfigure(0, weight=1)
+            items = value if isinstance(value, (list, tuple)) else [value]
+            self.widgets[f.key] = self._input(box, f, items[0] if items else "")
+            self.widgets[f.key].grid(row=0, column=0, sticky="ew")
+            self.more[f.key] = []
+            add = ttk.Button(box, text=app.t("letter_add_more"), style="Toolbutton",
+                             command=lambda f=f, box=box: self.add_value(f, box))
+            self.add_buttons[f.key] = add
+            for item in items[1:]:
+                self.add_value(f, box, item)
+            self._place_add(f.key)
+
+    def _input(self, parent, f, value=""):
+        if f.kind in ("dropdown", "combo"):
+            widget = ttk.Combobox(parent, values=f.options, state="readonly" if f.kind == "dropdown" else "normal")
+            widget.set(value if value in f.options or f.kind == "combo" else "")
+        else:
+            widget = ttk.Entry(parent)
+            widget.insert(0, value)
+        return widget
+
+    def add_value(self, f, box, value=""):
+        """Another value for the same field (another reason): it becomes one more item or bullet in the letter."""
+        row = ttk.Frame(box)
+        row.columnconfigure(0, weight=1)
+        widget = self._input(row, f, value)
+        widget.grid(row=0, column=0, sticky="ew")
+        ttk.Button(row, text="✕", width=3, command=lambda: self.remove_value(f.key, row, widget)).grid(
+            row=0, column=1, padx=(4, 0))
+        self.more[f.key].append(widget)
+        row.grid(row=len(self.more[f.key]), column=0, sticky="ew", pady=(4, 0))
+        self._place_add(f.key)
+        return widget
+
+    def remove_value(self, key, row, widget):
+        self.more[key].remove(widget)
+        row.destroy()
+        for n, other in enumerate(self.more[key], start=1):
+            other.master.grid(row=n)
+        self._place_add(key)
+
+    def _place_add(self, key):
+        self.add_buttons[key].grid(row=len(self.more[key]) + 1, column=0, sticky="w", pady=(4, 0))
 
     def values(self):
-        return {key: widget.get().strip() for key, widget in self.widgets.items()}
+        values = {key: widget.get().strip() for key, widget in self.widgets.items()}
+        for key, extra in self.more.items():
+            values[key] = [v for v in [values[key]] + [w.get().strip() for w in extra] if v]
+        return values
 
     def filled(self):
         return {k: v for k, v in self.values().items() if v}
