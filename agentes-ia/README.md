@@ -110,8 +110,9 @@ opción «Mayúsculas y acentos exactos» (que deja filtrar primero a Outlook) l
 
 ## MoreInfo Pilot: archivo MoreInfo del Fraud Package
 
-1. En **⚙ Folders & options** añade las carpetas donde se guarda el paquete (por ejemplo `\\servidor\Fraude\Packages`)
-   y crea tus **secciones** (nombre y orden, por ejemplo «Customer profile», «Cards», «Claim details»); se pueden
+1. En **⚙ Folders & options** elige la **carpeta del MoreInfo y los documentos** (una sola, por ejemplo
+   `\\servidor\Fraude\Packages`) y las **carpetas de la No Pay Decision Letter** (la carta se guarda en cada una, por
+   ejemplo dos), y crea tus **secciones** (nombre y orden, por ejemplo «Customer profile», «Cards», «Claim details»); se pueden
    renombrar, ordenar o quitar, y se guardan para todos los casos (`%APPDATA%\PilotSuite\moreinfo.json`).
 2. En **📎 MoreInfo package** escribe el **Case #**, elige la sección (o crea una con ＋) y pega cada captura con
    **Ctrl+V**, arrástrala a la lista o activa *Auto-add* y ve haciendo Win+Shift+S en cada pantalla o aplicación.
@@ -121,8 +122,14 @@ opción «Mayúsculas y acentos exactos» (que deja filtrar primero a Outlook) l
    Footprints, Web extractions, Voice Match, Approvals…): **arrástralos**, **pégalos** (Ctrl+V con archivos copiados
    en el Explorador, una imagen o el texto de un correo) o búscalos en el PC. Los Word e imágenes se guardan en PDF;
    PDF, Excel (.xlsx/.xls/.csv), texto (.txt) y correos (.msg/.eml) conservan su formato.
+   **Carta desde plantilla:** carga una vez la plantilla en blanco de la carta (.docx) y pulsa «Fill in the letter…»:
+   la app muestra un formulario con sus campos (controles de contenido de Word de texto, **desplegables** y fechas,
+   campos de formulario antiguos o marcadores como `[Customer Name]`). Un campo que aparece varias veces —por
+   ejemplo el nombre del cliente, que también sale como título más abajo— se escribe una sola vez. La carta se
+   guarda en PDF en las carpetas de la carta; el resto de documentos van solo a la carpeta del MoreInfo (cualquier
+   documento se puede marcar como carta con «Mark / unmark as decision letter").
 4. **Create and save**: se crea `CASE,MOREINFO.pdf` (o `.xlsx`) y los documentos como `CASE,MOREINFO1…`,
-   `CASE,MOREINFO2…`, todo en las mismas carpetas. Si no añadiste documentos, la app recuerda subir la No Pay
+   `CASE,MOREINFO2…` (la numeración no se repite entre la carpeta del caso y las de la carta). Si no añadiste documentos, la app recuerda subir la No Pay
    Decision Letter y los demás. «Upload documents only» sube solo los documentos. Si el caso ya tiene archivos en la
    carpeta, el número sigue: nunca se sobrescribe nada. No se guarda copia local (solo si no se pudo escribir en
    ninguna carpeta se conservan y la app indica dónde).

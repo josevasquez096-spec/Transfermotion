@@ -355,37 +355,44 @@ def prepare_document(src, dest_pdf, use_word=True):
 
 # ---------------------------------------------------------------- delivery
 
-def deliver(files, folders):
-    """Copies each file to every folder. Returns (copied paths, [(folder, error)])."""
-    copied, errors = [], []
-    for folder in folders:
-        target = Path(folder)
-        try:
-            target.mkdir(parents=True, exist_ok=True)
-            for f in files:
+def deliver(plan):
+    """Copies files to their folders: plan = [(file, [folders])]. Returns (copied paths, [(folder, error)])."""
+    copied, errors, failed = [], [], set()
+    for f, folders in plan:
+        for folder in folders:
+            if folder in failed:
+                continue
+            target = Path(folder)
+            try:
+                target.mkdir(parents=True, exist_ok=True)
                 dest = target / Path(f).name
                 if dest.exists():
                     raise FileExistsError(f"{dest.name} already exists")
                 shutil.copy2(f, dest)
                 copied.append(dest)
-        except OSError as exc:
-            errors.append((str(folder), str(exc)))
+            except OSError as exc:
+                failed.add(folder)
+                errors.append((str(folder), str(exc)))
     return copied, errors
 
 
-def create_package(case, analyst, shots, documents, folders, mode="pdf", excel_source=None, base=DEFAULT_BASE,
-                   use_word=True, keep_docx=False, sheet=EXCEL_SHEET, include_moreinfo=True):
-    """Builds CASE,MOREINFO (+ the case documents, numbered after it) and saves them in the destination folders.
+def create_package(case, analyst, shots, documents, folder, letter_folders=(), mode="pdf", excel_source=None,
+                   base=DEFAULT_BASE, use_word=True, keep_docx=False, sheet=EXCEL_SHEET, include_moreinfo=True):
+    """Builds CASE,MOREINFO (+ the case documents, numbered after it) and saves them.
 
-    With include_moreinfo=False only the documents are uploaded (No Pay Decision Letter, Excel, emails…).
-    The files are made in a temporary folder that is deleted afterwards (no local copy is kept). Only if no
-    destination could be written is that folder kept, so nothing is lost: its path is returned in "kept".
-    Returns a dict with the file names, copied paths, errors, PDF engine, notes and "kept"."""
+    The MoreInfo and the documents go to `folder`. Documents marked as the No Pay Decision Letter
+    (documents = [(path, is_letter)]) go to every folder in `letter_folders` instead (or to `folder` when that
+    list is empty). Numbers never repeat in any of those folders.
+    With include_moreinfo=False only the documents are uploaded.
+    The files are made in a temporary folder that is deleted afterwards (no local copy is kept). Only if nothing
+    could be written is that folder kept, so nothing is lost: its path is returned in "kept"."""
     case = clean_case(case)
+    documents = [(d, False) if isinstance(d, (str, Path)) else (d[0], bool(d[1])) for d in documents]
+    letter_folders = [f for f in letter_folders if f] or ([folder] if folder else [])
     if not case:
         raise ValueError("Enter the case number.")
-    if not folders:
-        raise ValueError("Add at least one destination folder.")
+    if not folder and (include_moreinfo or any(not is_letter for _, is_letter in documents)):
+        raise ValueError("Choose the destination folder.")
     if include_moreinfo and mode == "excel" and not excel_source:
         raise ValueError("Choose the transaction Excel file.")
     if include_moreinfo and mode == "pdf" and not shots:
@@ -399,9 +406,10 @@ def create_package(case, analyst, shots, documents, folders, mode="pdf", excel_s
         if mode == "excel" and Path(excel_source).suffix.lower() == ".xlsm":
             main_ext = ".xlsm"
         exts.append(main_ext)
-    exts += [document_target(d) for d in documents]
-    names = next_names(case, base, [Path(f) for f in folders], exts)
-    created, engine, notes = [], None, []
+    exts += [document_target(d) for d, _ in documents]
+    every = list(dict.fromkeys(str(f) for f in [folder, *letter_folders] if f))
+    names = next_names(case, base, [Path(f) for f in every], exts)
+    plan, engine, notes = [], None, []
     if include_moreinfo:
         main = work / names[0]
         if mode == "excel":
@@ -420,19 +428,19 @@ def create_package(case, analyst, shots, documents, folders, mode="pdf", excel_s
             if engine == "builtin":
                 render_pdf(main, case, analyst, shots)
             if keep_docx:
-                created.append(docx)
-        created.insert(0, main)
+                plan.append((docx, [folder]))
+        plan.insert(0, (main, [folder]))
         names = names[1:]
-    for doc, name in zip(documents, names, strict=True):
+    for (doc, is_letter), name in zip(documents, names, strict=True):
         saved, note = prepare_document(doc, work / Path(name).with_suffix(".pdf").name, use_word)
         if note:
             notes.append((note, Path(doc).name))
-        created.append(saved)
-    copied, errors = deliver(created, folders)
+        plan.append((saved, letter_folders if is_letter else [folder]))
+    copied, errors = deliver(plan)
     kept = None
     if copied:
         shutil.rmtree(work, ignore_errors=True)
     else:
         kept = work  # ninguna carpeta disponible: se conserva para no perder el trabajo
-    return {"names": [f.name for f in created], "copied": copied, "errors": errors, "engine": engine,
+    return {"names": [f.name for f, _ in plan], "copied": copied, "errors": errors, "engine": engine,
             "case": case, "kept": kept, "notes": notes}

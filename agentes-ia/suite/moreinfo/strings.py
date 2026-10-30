@@ -24,6 +24,26 @@ STRINGS = {key: _en(text) for key, text in {
     "dcol_file": "File",
     "dcol_type": "Type",
     "dcol_saved": "Saved as",
+    "dcol_dest": "Goes to",
+    "dest_main": "MoreInfo folder",
+    "dest_letter": "Letter folders ({n})",
+    "toggle_letter": "✉ Mark / unmark as decision letter",
+    "need_document_selection": "Select a document in the list first.",
+    "letter_box": "No Pay Decision Letter from your template",
+    "load_template": "Load blank template (.docx)…",
+    "fill_letter": "Fill in the letter…",
+    "template_none": "No template yet: load the blank letter (.docx). It is kept for every new case.",
+    "template_loaded": "Template: {name} — {n} field(s) to fill. It is kept for every new case.",
+    "template_bad": "The template could not be read: {detail}",
+    "template_no_fields": "No fields were found in this template. Use Word content controls (text, drop-down, "
+                          "date) or placeholders like [Customer Name].",
+    "letter_title": "No Pay Decision Letter",
+    "letter_intro": "Fill in the fields of the letter. A field marked ×2, ×3… appears several times in the letter "
+                    "(for example the customer name, also shown as a title): type it once. The letter is saved as "
+                    "PDF in the letter folders when you upload.",
+    "letter_add": "Add letter to the documents",
+    "letter_missing": "These fields are empty: {names}.\n\nAdd the letter anyway?",
+    "letter_added": "Decision letter added to the documents (it will be saved as PDF in the letter folders).",
     "same_format": "Same format",
     "doc_types": "Case documents",
     "docs_added": "{n} document(s) added",
@@ -85,7 +105,8 @@ STRINGS = {key: _en(text) for key, text in {
     "need_case": "Enter the case number.",
     "need_shots": "Add at least one screenshot.",
     "need_selection": "Select a screenshot first.",
-    "no_folders": "Add at least one destination folder in “Folders & options” first.",
+    "no_folders": "Choose the MoreInfo & documents folder (and the letter folders) in “Folders & options” "
+                  "first.",
     "new_case_confirm": "Clear the screenshots and documents to start a new case?",
     "done_title": "Package ready",
     "engine_word": "PDF created with Microsoft Word.",
@@ -96,7 +117,10 @@ STRINGS = {key: _en(text) for key, text in {
     "copy_errors": "Could not save to:",
     "kept": "No destination folder could be written, so the files were kept here: {folder}",
     # settings
-    "dest_folders": "Destination folders (network or local paths)",
+    "main_folder": "MoreInfo & documents folder (one folder)",
+    "letter_folders": "No Pay Decision Letter folders (the letter is saved in each one, for example 2)",
+    "letter_folders_hint": "Only the decision letter goes to these folders. If the list is empty, the letter goes to "
+                           "the MoreInfo folder.",
     "add_folder": "Add folder…",
     "add_path": "Add path…",
     "path_prompt": "Folder path (for example \\\\server\\Fraud\\Packages):",

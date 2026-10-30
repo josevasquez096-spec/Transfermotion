@@ -127,14 +127,21 @@ def exercise_moreinfo(app):
         app.add_shot(tmp / f"s{n}.png")
     app.tree.selection_set("1")
     app.update()
-    app.prefs.update(folders=[str(tmp / "share")], use_word=False)
+    app.prefs.update(folder=str(tmp / "share"), letter_folders=[str(tmp / "letters1"), str(tmp / "letters2")], use_word=False)
     app.case_var.set("12345")
     saved = messagebox.showinfo, messagebox.showwarning
     messagebox.showinfo = messagebox.showwarning = lambda *a, **k: None
     letter = tmp / "letter.txt"
     letter.write_text("No pay decision", encoding="utf-8")
     app.add_documents([str(letter)])
-    assert "1" in app.reminder.cget("text")
+    from suite.moreinfo import letter as letter_tpl
+
+    app.load_template(str(letter_tpl.make_sample_template(tmp / "blank.docx")))
+    dialog = app.fill_letter()
+    dialog.widgets["cc:customername"].insert(0, "Laura Méndez")
+    dialog.app.letter_ready({k: v for k, v in dialog.values().items() if v})
+    dialog.destroy()
+    assert "2" in app.reminder.cget("text") and app.documents[0]["letter"]
     try:
         app.create()
         while app._busy:
@@ -142,7 +149,8 @@ def exercise_moreinfo(app):
             app.after(50)
     finally:
         messagebox.showinfo, messagebox.showwarning = saved
-    assert (tmp / "share" / "12345,MOREINFO.pdf").exists() and (tmp / "share" / "12345,MOREINFO1.txt").exists()
+    assert (tmp / "share" / "12345,MOREINFO.pdf").exists() and (tmp / "share" / "12345,MOREINFO2.txt").exists()
+    assert (tmp / "letters1" / "12345,MOREINFO1.pdf").exists() and (tmp / "letters2" / "12345,MOREINFO1.pdf").exists()
     app.nb.select(1)
     app.update()
     app.mode.set("excel")

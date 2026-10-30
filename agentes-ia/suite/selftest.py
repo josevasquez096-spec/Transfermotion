@@ -138,16 +138,22 @@ def _moreinfo(out):
     doc.add_paragraph("No Pay Decision Letter")
     doc.save(letter)
     (out / "notes.txt").write_text("email text", encoding="utf-8")
-    result = logic.create_package("TEST1", "selftest", shots, [str(letter), str(out / "notes.txt")], [share],
+    result = logic.create_package("TEST1", "selftest", shots, [(str(letter), True), str(out / "notes.txt")], share,
                                   use_word=False)
     assert sorted(p.name for p in result["copied"]) == ["TEST1,MOREINFO1.pdf", "TEST1,MOREINFO2.pdf",
                                                         "TEST1,MOREINFO3.txt"], result
     assert (Path(__file__).resolve().parent / "moreinfo" / "assets" / "background.jpg").exists()
     import tkinterdnd2  # noqa: F401  (arrastrar y soltar incluido en el .exe)
+    from .moreinfo import letter as letter_tpl
+
+    template = letter_tpl.make_sample_template(out / "blank_letter.docx")
+    keys = {f.key for f in letter_tpl.scan(template)}
+    filled = letter_tpl.fill(template, {k: "x" for k in keys}, out / "filled_letter.docx")
+    assert all(f.value for f in letter_tpl.scan(filled))
     wb = Workbook()
     wb.active.append(["Date", "Amount"])
     wb.save(out / "txns.xlsx")
-    logic.create_package("TEST2", "selftest", shots[1:], [], [share], mode="excel",
+    logic.create_package("TEST2", "selftest", shots[1:], [], share, mode="excel",
                          excel_source=str(out / "txns.xlsx"))
     assert "Additional info" in load_workbook(share / "TEST2,MOREINFO.xlsx").sheetnames
 
