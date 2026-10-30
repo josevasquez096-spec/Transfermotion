@@ -1024,7 +1024,7 @@ class LetterDialog(tk.Toplevel):
         self.address_entry.grid(row=0, column=0, sticky="ew")
         ttk.Button(box, text=t("address_fill"), command=self.fill_address).grid(row=0, column=1, padx=(6, 0))
         self.address_hint = ttk.Label(box, text=t("address_hint"), style="Hint.TLabel", justify="left",
-                                      wraplength=int(440 * self.app.scale))
+                                      wraplength=int(520 * self.app.scale))
         self.address_hint.grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
         self.address_entry.bind("<Return>", lambda e: self.fill_address())
         self.address_entry.bind("<<Paste>>", lambda e: self.after_idle(self.fill_address))
@@ -1043,9 +1043,8 @@ class LetterDialog(tk.Toplevel):
             else:
                 widget.delete(0, "end")
                 widget.insert(0, value)
-        labels = {f.key: f.label for f in self.fields}
-        names = ", ".join(labels[k] for k in found)
-        missing = [labels[k] for k in self.address_roles.values() if k not in found]
+        names = ", ".join(f.label for f in self.fields if f.key in found)  # en el orden de la plantilla
+        missing = [f.label for f in self.fields if f.key in self.address_roles.values() and f.key not in found]
         if len(found) < 2:
             self.address_hint.configure(text=t("address_bad"))
         elif missing:
