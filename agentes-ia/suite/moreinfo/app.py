@@ -57,7 +57,14 @@ class MoreInfoPilot(PilotApp):
         old = self.prefs.pop("folders", None)  # versiones anteriores: lista de carpetas
         if not self.prefs["folder"] and old:
             self.prefs["folder"] = old[0]
-        self.template_path = self.settings.data_dir() / "letter_template.docx"
+        self.templates_dir = self.settings.data_dir() / "letter_templates"
+        self.prefs.setdefault("templates", [])
+        legacy = self.settings.data_dir() / "letter_template.docx"  # versión anterior: una sola plantilla
+        if legacy.exists() and not self.prefs["templates"]:
+            self.templates_dir.mkdir(parents=True, exist_ok=True)
+            legacy.replace(self.templates_dir / "template_1.docx")
+            name = Path(self.prefs.pop("template_name", "") or "Default letter").stem
+            self.prefs["templates"].append({"name": name, "file": "template_1.docx"})
         self.shots = []
         self.documents = []
         self.dnd = self._enable_dnd()
@@ -400,11 +407,19 @@ class MoreInfoPilot(PilotApp):
         self.lbl(tab, "docs_intro", hint=True, wraplength=1000, justify="left").pack(anchor="w", pady=(8, 6))
         tpl = self.lframe(tab, "letter_box", padding=8)
         tpl.pack(fill="x", pady=(0, 8))
+        row = ttk.Frame(tpl)
+        row.pack(fill="x")
+        self.lbl(row, "template").pack(side="left")
+        self.template_combo = ttk.Combobox(row, state="readonly", width=34)
+        self.template_combo.pack(side="left", padx=6)
+        self.template_combo.bind("<<ComboboxSelected>>", lambda e: self._show_template())
+        self.btn(row, "load_template", self.load_template).pack(side="left")
+        self.btn(row, "rename_template", self.rename_template).pack(side="left", padx=6)
+        self.btn(row, "remove_template", self.remove_template).pack(side="left")
+        self.btn(row, "fill_letter", self.fill_letter, accent=True).pack(side="right")
         self.template_label = ttk.Label(tpl, style="Hint.TLabel")
-        self.template_label.pack(side="left", fill="x", expand=True)
-        self.btn(tpl, "load_template", self.load_template).pack(side="left", padx=6)
-        self.btn(tpl, "fill_letter", self.fill_letter, accent=True).pack(side="left")
-        self.tr_call(self._show_template)
+        self.template_label.pack(anchor="w", pady=(6, 0))
+        self.tr_call(self._fill_templates)
         self.drop_zone = tk.Label(tab, bg="#E8F4F8", fg="#0E7490", font=("Segoe UI", 12, "bold"), height=4,
                                   relief="groove", borderwidth=2, cursor="hand2")
         self.drop_zone.pack(fill="x")
@@ -416,6 +431,7 @@ class MoreInfoPilot(PilotApp):
         self.btn(bar, "paste_docs", self.paste_documents).pack(side="left", padx=6)
         self.btn(bar, "remove", self.remove_document).pack(side="left")
         self.btn(bar, "toggle_letter", self.toggle_letter).pack(side="left", padx=6)
+        self.btn(bar, "preview_doc", self.preview_document).pack(side="left")
         self.btn(bar, "upload_docs", self.upload_documents).pack(side="right")
         self.doc_tree = ttk.Treeview(tab, columns=("n", "file", "type", "saved", "dest"), show="headings", height=6)
         for col, width in (("n", 40), ("file", 380), ("type", 90), ("saved", 120), ("dest", 200)):
@@ -423,6 +439,7 @@ class MoreInfoPilot(PilotApp):
             self.doc_tree.heading(col, text=self.t(f"dcol_{col}"))
         self.doc_tree.pack(fill="both", expand=True)
         self.doc_tree.bind("<Delete>", lambda e: self.remove_document())
+        self.doc_tree.bind("<Double-1>", lambda e: self.edit_or_preview())
         for widget in (self.drop_zone, self.doc_tree):
             self._drop_target(widget, self.add_documents)
 
@@ -496,61 +513,167 @@ class MoreInfoPilot(PilotApp):
             self.documents[int(iid)]["letter"] = not self.documents[int(iid)]["letter"]
         self._fill_documents()
 
-    # ------------------------------------------------------------ decision letter template
-    def _show_template(self):
-        if self.template_path.exists():
-            fields = self._template_fields()
-            text = self.t("template_loaded", name=self.prefs.get("template_name") or self.template_path.name,
-                          n=len(fields))
-        else:
-            text = self.t("template_none")
-        self.template_label.configure(text=text)
+    # ------------------------------------------------------------ decision letter templates (several, named)
+    def _template_file(self, template):
+        return self.templates_dir / template["file"]
 
-    def _template_fields(self):
+    def current_template(self):
+        index = self.template_combo.current()
+        templates = self.prefs["templates"]
+        return templates[index] if 0 <= index < len(templates) else None
+
+    def _fill_templates(self, select=None):
+        names = [t["name"] for t in self.prefs["templates"]]
+        current = select or self.template_combo.get()
+        self.template_combo["values"] = names
+        if current in names:
+            self.template_combo.set(current)
+        elif names:
+            self.template_combo.current(0)
+        else:
+            self.template_combo.set("")
+        self._show_template()
+
+    def _show_template(self):
+        template = self.current_template()
+        if template is None:
+            self.template_label.configure(text=self.t("template_none"))
+            return
+        self.template_label.configure(text=self.t("template_loaded", name=template["name"],
+                                                  n=len(self._template_fields(template))))
+
+    def _template_fields(self, template):
         try:
-            return letter.scan(self.template_path)
+            return letter.scan(self._template_file(template))
         except Exception:  # plantilla dañada o que no es .docx
             return []
 
-    def load_template(self, path=None):
+    def _ask_template_name(self, initial=""):
+        name = simpledialog.askstring(self.APP_NAME, self.t("template_name_prompt"), initialvalue=initial,
+                                      parent=self)
+        name = " ".join((name or "").split())
+        if name and name != initial and name.lower() in {t["name"].lower() for t in self.prefs["templates"]}:
+            messagebox.showwarning(self.APP_NAME, self.t("template_exists", name=name), parent=self)
+            return None
+        return name or None
+
+    def load_template(self, path=None, name=None):
+        """Añade una plantilla en blanco (.docx) con un nombre (p. ej. «Credit card – English», «Débit – French»)."""
         path = path or filedialog.askopenfilename(parent=self, filetypes=[("Word", "*.docx"),
                                                                           (self.t("ft_all"), "*.*")])
         if not path:
-            return
+            return None
         try:
             fields = letter.scan(path)
         except Exception as exc:
             messagebox.showerror(self.APP_NAME, self.t("template_bad", detail=exc), parent=self)
-            return
+            return None
         if not fields:
             messagebox.showwarning(self.APP_NAME, self.t("template_no_fields"), parent=self)
-            return
-        self.template_path.parent.mkdir(parents=True, exist_ok=True)
-        self.template_path.write_bytes(Path(path).read_bytes())
-        self.prefs["template_name"] = Path(path).name
+            return None
+        name = name or self._ask_template_name(Path(path).stem)
+        if not name:
+            return None
+        self.templates_dir.mkdir(parents=True, exist_ok=True)
+        n = 1
+        while (self.templates_dir / f"template_{n}.docx").exists():
+            n += 1
+        (self.templates_dir / f"template_{n}.docx").write_bytes(Path(path).read_bytes())
+        self.prefs["templates"].append({"name": name, "file": f"template_{n}.docx"})
         self.save_prefs()
-        self._show_template()
+        self._fill_templates(select=name)
+        return name
 
-    def fill_letter(self):
-        if not self.template_path.exists():
+    def rename_template(self):
+        template = self.current_template()
+        if template is None:
+            return
+        name = self._ask_template_name(template["name"])
+        if name:
+            template["name"] = name
+            self.save_prefs()
+            self._fill_templates(select=name)
+
+    def remove_template(self):
+        template = self.current_template()
+        if template is None or not messagebox.askyesno(self.APP_NAME, self.t("template_remove_confirm",
+                                                                             name=template["name"]), parent=self):
+            return
+        self.prefs["templates"].remove(template)
+        self._template_file(template).unlink(missing_ok=True)
+        self.save_prefs()
+        self._fill_templates()
+
+    def fill_letter(self, template=None, values=None):
+        template = template or self.current_template()
+        if template is None:
             messagebox.showinfo(self.APP_NAME, self.t("template_none"), parent=self)
             return None
-        fields = self._template_fields()
+        fields = self._template_fields(template)
         if not fields:
             messagebox.showwarning(self.APP_NAME, self.t("template_no_fields"), parent=self)
             return None
-        return LetterDialog(self, fields)
+        return LetterDialog(self, template, fields, values)
 
-    def letter_ready(self, values):
-        """Rellena la plantilla y añade la carta (Word) a los documentos; al subirla se guarda en PDF."""
+    def _letter_docx(self, template, values):
         folder = Path(tempfile.gettempdir()) / "MoreInfoPilot"
         folder.mkdir(parents=True, exist_ok=True)
-        dest = folder / f"No Pay Decision Letter {datetime.now():%H%M%S}.docx"
-        letter.fill(self.template_path, values, dest)
+        dest = folder / f"No Pay Decision Letter - {template['name']} {datetime.now():%H%M%S%f}.docx"
+        return letter.fill(self._template_file(template), values, dest)
+
+    def preview_letter(self, template, values):
+        """Crea la carta en PDF (igual que al subirla) y la abre para revisarla."""
+        self._open_as_pdf(lambda: self._letter_docx(template, values))
+
+    def _open_as_pdf(self, make_source):
+        use_word = self.prefs["use_word"]
+
+        def work():
+            source = Path(make_source())
+            if logic.document_target(source) != ".pdf":
+                return source  # Excel, texto, correos: se abren con su programa
+            folder = Path(tempfile.mkdtemp(prefix="moreinfo_preview_"))
+            saved, _ = logic.prepare_document(source, folder / (source.stem + ".pdf"), use_word)
+            return saved
+
+        def done(path):
+            open_path(path)
+            self.status(self.t("preview_opened", name=Path(path).name))
+
+        self.run_task(work, done)
+
+    def letter_ready(self, template, values, previewed=False):
+        """Rellena la plantilla y añade la carta a los documentos; al subirla se guarda en PDF."""
+        dest = self._letter_docx(template, values)
         self.documents = [d for d in self.documents if not d.get("template")]  # una sola carta por caso
-        self.documents.insert(0, {"path": str(dest), "letter": True, "template": True})
+        self.documents.insert(0, {"path": str(dest), "letter": True, "template": template["name"],
+                                  "values": dict(values), "previewed": previewed})
         self._fill_documents()
         self.status(self.t("letter_added"))
+
+    def _template_by_name(self, name):
+        return next((t for t in self.prefs["templates"] if t["name"] == name), None)
+
+    def edit_or_preview(self):
+        sel = self.doc_tree.selection()
+        if not sel:
+            return
+        doc = self.documents[int(sel[0])]
+        template = self._template_by_name(doc.get("template")) if doc.get("template") else None
+        if template is not None:
+            self.fill_letter(template, doc.get("values"))  # volver a editar la carta
+        else:
+            self.preview_document()
+
+    def preview_document(self):
+        sel = self.doc_tree.selection()
+        if not sel:
+            messagebox.showinfo(self.APP_NAME, self.t("need_document_selection"), parent=self)
+            return
+        doc = self.documents[int(sel[0])]
+        if doc.get("template"):
+            doc["previewed"] = True
+        self._open_as_pdf(lambda: doc["path"])
 
     def remove_document(self):
         for iid in sorted((int(i) for i in self.doc_tree.selection()), reverse=True):
@@ -592,6 +715,18 @@ class MoreInfoPilot(PilotApp):
         case = logic.clean_case(self.case_var.get())
         if not self.need(case, "need_case"):
             return
+        pending = next((d for d in self.documents if d.get("template") and not d.get("previewed")), None)
+        if pending is not None:
+            # control: la carta se revisa antes de subirla
+            answer = messagebox.askyesnocancel(self.APP_NAME, self.t("letter_not_previewed"), icon="warning",
+                                               parent=self)
+            if answer is None:
+                return
+            if answer:
+                pending["previewed"] = True
+                self.nb.select(1)
+                self._open_as_pdf(lambda: pending["path"])
+                return
         if not include_moreinfo and not self.need(self.documents, "need_documents"):
             return
         documents = [(d["path"], d["letter"]) for d in self.documents]
@@ -810,36 +945,42 @@ class MoreInfoPilot(PilotApp):
 
 class LetterDialog(tk.Toplevel):
     """Form generated from the template's fields (text, drop-downs, dates). One box per field name: a value that
-    appears several times in the letter (for example the customer name) is typed only once."""
+    appears several times in the letter (for example the customer name) is typed only once. «Preview» builds the
+    PDF exactly as it will be uploaded so the analyst can check it first."""
 
-    def __init__(self, app, fields):
+    def __init__(self, app, template, fields, values=None):
         super().__init__(app)
-        self.app, self.fields, self.widgets = app, fields, {}
-        self.title(app.t("letter_title"))
+        self.app, self.template, self.fields, self.widgets = app, template, fields, {}
+        self.previewed = None
+        self.title(f"{app.t('letter_title')} – {template['name']}")
         self.transient(app)
-        self.geometry(f"{int(640 * app.scale)}x{int(560 * app.scale)}")
-        ttk.Label(self, text=app.t("letter_intro"), style="Hint.TLabel", wraplength=int(600 * app.scale),
-                  justify="left").pack(anchor="w", padx=14, pady=(12, 4))
+        self.geometry(f"{int(660 * app.scale)}x{int(580 * app.scale)}")
+        ttk.Label(self, text=f"{app.t('template')}: {template['name']}", style="Title.TLabel").pack(
+            anchor="w", padx=14, pady=(12, 0))
+        ttk.Label(self, text=app.t("letter_intro"), style="Hint.TLabel", wraplength=int(620 * app.scale),
+                  justify="left").pack(anchor="w", padx=14, pady=(4, 4))
         bar = ttk.Frame(self, padding=14)
         bar.pack(side="bottom", fill="x")
         ttk.Button(bar, text=app.t("cancel"), command=self.destroy).pack(side="right")
         ttk.Button(bar, text=app.t("letter_add"), style="Accent.TButton", command=self.accept).pack(side="right",
                                                                                                     padx=8)
+        ttk.Button(bar, text=app.t("letter_preview"), command=self.preview).pack(side="left")
         scroll = ScrollFrame(self)
         scroll.pack(fill="both", expand=True, padx=14)
         form = scroll.inner
         form.columnconfigure(1, weight=1)
         case, analyst = app.case_var.get().strip(), app.analyst_var.get().strip()
+        language = letter.language(app._template_file(template))
         for row, f in enumerate(fields):
             label = f.label + (f"  (×{f.count})" if f.count > 1 else "")
             ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
-            value, lower = f.value, f.label.lower()
-            if not value and ("case" in lower or "claim" in lower) and case:
+            value, lower = (values or {}).get(f.key, f.value), f.label.lower()
+            if not value and any(w in lower for w in ("case", "claim", "dossier", "réclamation")) and case:
                 value = case
-            elif not value and "analyst" in lower and analyst:
+            elif not value and any(w in lower for w in ("analyst", "analyste")) and analyst:
                 value = analyst
             elif not value and f.kind == "date":
-                value = datetime.now().strftime("%B %d, %Y").replace(" 0", " ")
+                value = letter.today(language)
             if f.kind in ("dropdown", "combo"):
                 widget = ttk.Combobox(form, values=f.options, state="readonly" if f.kind == "dropdown" else "normal")
                 widget.set(value if value in f.options or f.kind == "combo" else "")
@@ -852,13 +993,20 @@ class LetterDialog(tk.Toplevel):
     def values(self):
         return {key: widget.get().strip() for key, widget in self.widgets.items()}
 
+    def filled(self):
+        return {k: v for k, v in self.values().items() if v}
+
+    def preview(self):
+        self.previewed = self.filled()
+        self.app.preview_letter(self.template, self.previewed)
+
     def accept(self):
         values = self.values()
         missing = [f.label for f in self.fields if not values.get(f.key)]
         if missing and not messagebox.askyesno(self.app.APP_NAME, self.app.t("letter_missing",
                                                                             names=", ".join(missing)), parent=self):
             return
-        self.app.letter_ready({k: v for k, v in values.items() if v})
+        self.app.letter_ready(self.template, self.filled(), previewed=self.previewed == self.filled())
         self.destroy()
 
 

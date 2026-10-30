@@ -129,26 +129,33 @@ def exercise_moreinfo(app):
     app.update()
     app.prefs.update(folder=str(tmp / "share"), letter_folders=[str(tmp / "letters1"), str(tmp / "letters2")], use_word=False)
     app.case_var.set("12345")
-    saved = messagebox.showinfo, messagebox.showwarning
+    saved = messagebox.showinfo, messagebox.showwarning, messagebox.askyesnocancel
     messagebox.showinfo = messagebox.showwarning = lambda *a, **k: None
+    asked = []
+    messagebox.askyesnocancel = lambda *a, **k: asked.append(a) or False  # subir sin vista previa
     letter = tmp / "letter.txt"
     letter.write_text("No pay decision", encoding="utf-8")
     app.add_documents([str(letter)])
     from suite.moreinfo import letter as letter_tpl
 
-    app.load_template(str(letter_tpl.make_sample_template(tmp / "blank.docx")))
+    app.load_template(str(letter_tpl.make_sample_template(tmp / "blank.docx")), name="Credit card - English")
+    app.load_template(str(letter_tpl.make_sample_template(tmp / "blank2.docx")), name="Débit - French")
+    assert list(app.template_combo["values"]) == ["Credit card - English", "Débit - French"]
+    app.template_combo.current(0)
     dialog = app.fill_letter()
     dialog.widgets["cc:customername"].insert(0, "Laura Méndez")
-    dialog.app.letter_ready({k: v for k, v in dialog.values().items() if v})
+    app.letter_ready(dialog.template, dialog.filled())
     dialog.destroy()
     assert "2" in app.reminder.cget("text") and app.documents[0]["letter"]
+    assert app.documents[0]["values"]["cc:customername"] == "Laura Méndez" and not app.documents[0]["previewed"]
     try:
         app.create()
         while app._busy:
             app.update()
             app.after(50)
     finally:
-        messagebox.showinfo, messagebox.showwarning = saved
+        messagebox.showinfo, messagebox.showwarning, messagebox.askyesnocancel = saved
+    assert any("previewed" in str(x) for x in asked)
     assert (tmp / "share" / "12345,MOREINFO.pdf").exists() and (tmp / "share" / "12345,MOREINFO2.txt").exists()
     assert (tmp / "letters1" / "12345,MOREINFO1.pdf").exists() and (tmp / "letters2" / "12345,MOREINFO1.pdf").exists()
     app.nb.select(1)

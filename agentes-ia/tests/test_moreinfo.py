@@ -234,5 +234,49 @@ def test_letter_bound_to_custom_xml(tmp_path):
     with zipfile.ZipFile(template, "w") as zf:
         for name, content in data.items():
             zf.writestr(name, content)
-    out = letter.fill(template, {"cc:merchant": "TechStore"}, tmp_path / "out.docx")
+    key = next(f.key for f in letter.scan(template) if f.label == "Merchant")
+    assert key.startswith("xp:")
+    out = letter.fill(template, {key: "TechStore"}, tmp_path / "out.docx")
     assert b"TechStore" in zipfile.ZipFile(out).read("customXml/item1.xml")
+
+
+def test_letter_language_and_date(tmp_path):
+    from datetime import date
+
+    from suite.moreinfo import letter
+
+    english = letter.make_sample_template(tmp_path / "en.docx")
+    french = tmp_path / "fr.docx"
+    doc = Document()
+    doc.add_paragraph("Madame, Monsieur [Nom du client], nous avons étudié votre réclamation et la décision est "
+                      "pour le dossier [Numéro de dossier].")
+    doc.save(french)
+    assert letter.language(english) == "en" and letter.language(french) == "fr"
+    assert letter.today("fr", date(2026, 10, 3)) == "3 octobre 2026"
+    assert letter.today("en", date(2026, 10, 3)) == "October 3, 2026"
+    assert {f.label for f in letter.scan(french)} == {"Nom du client", "Numéro de dossier"}
+
+
+def test_two_controls_bound_to_the_same_data_are_one_field(tmp_path):
+    """Como la plantilla del banco: «Customer Name» y su copia bloqueada «Customer Name (auto)»."""
+    import zipfile
+
+    from suite.moreinfo import letter
+
+    template = tmp_path / "bound2.docx"
+    letter.make_sample_template(template)
+    data = {n: zipfile.ZipFile(template).read(n) for n in zipfile.ZipFile(template).namelist()}
+    binding = ('<w:dataBinding w:prefixMappings="xmlns:ns0=\'urn:x\'" w:xpath="/ns0:letter[1]/ns0:name[1]" '
+               'w:storeItemID="{11111111-1111-1111-1111-111111111111}"/>')
+    xml = data["word/document.xml"].decode()
+    xml = xml.replace('<w:tag w:val="CustomerName"/>', '<w:tag w:val="CustomerName"/>' + binding, 1)
+    xml = xml.replace('<w:tag w:val="Analyst"/>', '<w:tag w:val="NameAuto"/>' + binding)  # otro control, mismo dato
+    data["word/document.xml"] = xml.encode()
+    data["customXml/item1.xml"] = b'<letter xmlns="urn:x"><name></name></letter>'
+    with zipfile.ZipFile(template, "w") as zf:
+        for name, content in data.items():
+            zf.writestr(name, content)
+    bound = [f for f in letter.scan(template) if f.key.startswith("xp:")]
+    assert len(bound) == 1 and bound[0].count == 2 and bound[0].label == "Customer name"
+    out = letter.fill(template, {bound[0].key: "Emma Wilson"}, tmp_path / "out.docx")
+    assert _all_text(out).count("Emma Wilson") == 2

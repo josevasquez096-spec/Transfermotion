@@ -63,12 +63,14 @@ def _leaf_sdts(tree):
 
 
 def _sdt_key(pr, index):
+    """Controls bound to the same data (Word mapping) are one field; otherwise the Tag/Title names the field."""
     binding = pr.find(W + "dataBinding")
     tag, alias = _val(pr, "tag"), _val(pr, "alias")
+    if binding is not None and binding.get(W + "xpath"):
+        xpath = binding.get(W + "xpath")
+        return f"xp:{xpath}", alias or tag or xpath.rsplit("/", 1)[-1].split("[")[0].split(":")[-1]
     if tag or alias:
         return f"cc:{(tag or alias).strip().lower()}", alias or tag
-    if binding is not None:
-        return f"xp:{binding.get(W + 'xpath')}", binding.get(W + "xpath").rsplit("/", 1)[-1].split("[")[0]
     return f"cc:#{index}", None
 
 
@@ -155,6 +157,35 @@ def scan(path):
                     label = (m.group(1) or m.group(2)).strip()
                     add(f"ph:{label.lower()}", label)
     return [fields[k] for k in order]
+
+
+MONTHS = {"fr": ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
+                  "novembre", "décembre"),
+          "es": ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+                 "noviembre", "diciembre")}
+_STOP = {"fr": {"le", "la", "les", "des", "vous", "votre", "nous", "madame", "monsieur", "et", "est", "pour"},
+         "es": {"el", "los", "las", "usted", "su", "nosotros", "señor", "señora", "y", "para", "del"},
+         "en": {"the", "you", "your", "we", "dear", "and", "is", "for", "of", "to"}}
+
+
+def language(path):
+    """Language of a template (en, fr or es), guessed from its words, for the default date format."""
+    try:
+        with zipfile.ZipFile(path) as zf:
+            words = re.findall(r"[a-zà-ÿ]+", " ".join(_text(etree.fromstring(zf.read(n))) for n in _parts(zf)).lower())
+    except Exception:
+        return "en"
+    scores = {lang: sum(w in stop for w in words) for lang, stop in _STOP.items()}
+    return max(scores, key=scores.get) if any(scores.values()) else "en"
+
+
+def today(lang="en", now=None):
+    from datetime import date
+
+    now = now or date.today()
+    if lang in MONTHS:
+        return f"{now.day} {MONTHS[lang][now.month - 1]} {now.year}"
+    return f"{now:%B} {now.day}, {now.year}"
 
 
 # ---------------------------------------------------------------- filling

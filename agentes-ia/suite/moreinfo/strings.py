@@ -30,10 +30,24 @@ STRINGS = {key: _en(text) for key, text in {
     "toggle_letter": "✉ Mark / unmark as decision letter",
     "need_document_selection": "Select a document in the list first.",
     "letter_box": "No Pay Decision Letter from your template",
-    "load_template": "Load blank template (.docx)…",
+    "template": "Template",
+    "load_template": "Add template (.docx)…",
+    "rename_template": "Rename…",
+    "remove_template": "Remove",
+    "template_name_prompt": "Name for this letter template (for example “Credit card – English” or "
+                            "“Carte de débit – French”):",
+    "template_exists": "There is already a template called “{name}”.",
+    "template_remove_confirm": "Remove the template “{name}” from MoreInfo Pilot?",
+    "preview_doc": "👁 Preview",
+    "letter_preview": "👁 Preview letter (PDF)",
+    "preview_opened": "Preview opened: {name}",
+    "letter_not_previewed": "The No Pay Decision Letter has not been previewed yet. Check it before it is "
+                            "uploaded.\n\nYes = open the preview now\nNo = upload without previewing",
     "fill_letter": "Fill in the letter…",
-    "template_none": "No template yet: load the blank letter (.docx). It is kept for every new case.",
-    "template_loaded": "Template: {name} — {n} field(s) to fill. It is kept for every new case.",
+    "template_none": "No template yet: add the blank letters (.docx), one per product or language, and give "
+                     "each one a name. They are kept for every new case.",
+    "template_loaded": "“{name}”: {n} field(s) to fill. Choose the right template for the case, then “Fill in "
+                       "the letter…”. Double-click the letter in the list to edit it again.",
     "template_bad": "The template could not be read: {detail}",
     "template_no_fields": "No fields were found in this template. Use Word content controls (text, drop-down, "
                           "date) or placeholders like [Customer Name].",
