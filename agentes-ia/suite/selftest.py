@@ -156,6 +156,17 @@ def _moreinfo(out):
     logic.create_package("TEST2", "selftest", shots[1:], [], share, mode="excel",
                          excel_source=str(out / "txns.xlsx"))
     assert "Additional info" in load_workbook(share / "TEST2,MOREINFO.xlsx").sheetnames
+    import hashlib
+
+    assert hashlib.md5(b"x").hexdigest()  # huella de las capturas, sin OpenSSL
+    if getattr(sys, "frozen", False):
+        import importlib.util
+
+        # el .exe funciona sin internet: no lleva IA, conexión segura (ssl) ni pandas
+        for module in ("anthropic", "httpx", "ssl", "pandas", "numpy"):
+            assert importlib.util.find_spec(module) is None, f"{module} should not be in MoreInfoPilot.exe"
+        if sys.platform == "win32":
+            from PIL import ImageTk  # noqa: F401  (la foto de fondo)
 
 
 CHECKS = {"moreinfo": _moreinfo, "datapilot": _datapilot, "bipilot": _bipilot, "docpilot": _docpilot, "slidepilot": _slidepilot,

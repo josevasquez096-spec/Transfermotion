@@ -31,14 +31,14 @@ DATA_PACKAGES = ("sv_ttk", "docx", "pptx")
 # ejecutable esas carpetas tienen que existir, así que se crean con un archivo vacío.
 PATH_DIRS = ("docx/parts", "pptx/oxml", "pptx/shapes")
 EXCLUDES = ("matplotlib", "scipy", "IPython", "pytest", "notebook", "PyQt5", "PySide6")
-# Lo que una app no usa y solo le añade peso. MoreInfo Pilot no usa pandas/numpy, la IA (anthropic y sus
-# librerías de red), PowerPoint, AVIF ni la interfaz MFC de pywin32: sin ellos pasa de ~60 MB a ~25 MB y se puede
-# enviar por correo.
+# Lo que una app no usa y solo le añade peso. MoreInfo Pilot funciona siempre sin internet y sin IA: no lleva
+# pandas/numpy, la IA (anthropic), conexiones a internet (httpx, ssl/OpenSSL), PowerPoint, AVIF ni la interfaz MFC
+# de pywin32. Así pasa de ~60 MB a ~25 MB y se puede enviar por correo.
 APP_EXCLUDES = {
     "MoreInfoPilot": ("pandas", "numpy", "anthropic", "pydantic", "pydantic_core", "httpx", "httpcore", "anyio",
                       "jiter", "pygments", "setuptools", "xlsxwriter", "click", "pptx", "sqlite3", "dateutil",
                       "tzdata", "PIL._avif", "PIL.AvifImagePlugin", "PIL.ImageQt", "win32ui", "win32uiole",
-                      "pythonwin", "dde"),
+                      "pythonwin", "dde", "ssl", "_ssl", "_hashlib"),
 }
 # MailPilot: diccionarios del corrector (solo los tres idiomas de la suite) y el módulo de zonas horarias que
 # pywin32 carga al convertir las fechas de Outlook.
