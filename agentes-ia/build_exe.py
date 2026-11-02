@@ -31,6 +31,15 @@ DATA_PACKAGES = ("sv_ttk", "docx", "pptx")
 # ejecutable esas carpetas tienen que existir, así que se crean con un archivo vacío.
 PATH_DIRS = ("docx/parts", "pptx/oxml", "pptx/shapes")
 EXCLUDES = ("matplotlib", "scipy", "IPython", "pytest", "notebook", "PyQt5", "PySide6")
+# Lo que una app no usa y solo le añade peso. MoreInfo Pilot no usa pandas/numpy, la IA (anthropic y sus
+# librerías de red), PowerPoint, AVIF ni la interfaz MFC de pywin32: sin ellos pasa de ~60 MB a ~25 MB y se puede
+# enviar por correo.
+APP_EXCLUDES = {
+    "MoreInfoPilot": ("pandas", "numpy", "anthropic", "pydantic", "pydantic_core", "httpx", "httpcore", "anyio",
+                      "jiter", "pygments", "setuptools", "xlsxwriter", "click", "pptx", "sqlite3", "dateutil",
+                      "tzdata", "PIL._avif", "PIL.AvifImagePlugin", "PIL.ImageQt", "win32ui", "win32uiole",
+                      "pythonwin", "dde"),
+}
 # MailPilot: diccionarios del corrector (solo los tres idiomas de la suite) y el módulo de zonas horarias que
 # pywin32 carga al convertir las fechas de Outlook.
 SPELL_LANGS = {"MailPilot": ("en", "es", "fr")}
@@ -68,13 +77,15 @@ def build(name):
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--windowed",
            "--name", name, "--icon", str(ico), "--distpath", str(ROOT / "dist"),
            "--workpath", str(ROOT / "build" / name), "--specpath", str(ROOT / "build")]
+    excludes = EXCLUDES + APP_EXCLUDES.get(name, ())
     for pkg in DATA_PACKAGES:
-        cmd += ["--collect-data", pkg]
+        if pkg not in excludes:
+            cmd += ["--collect-data", pkg]
     marker = ROOT / "build" / "keep.txt"
     marker.write_text("PilotSuite\n", encoding="utf-8")
     for folder in PATH_DIRS:
         cmd += ["--add-data", f"{marker}{os.pathsep}{folder}"]
-    for mod in EXCLUDES:
+    for mod in excludes:
         cmd += ["--exclude-module", mod]
     cmd += extra_args(name)
     cmd.append(str(ROOT / f"{name}.py"))

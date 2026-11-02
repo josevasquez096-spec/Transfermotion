@@ -8,7 +8,6 @@ import traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import pandas as pd
 
 try:
     import sv_ttk
@@ -510,13 +509,17 @@ def fmt(value):
     if value is None:
         return ""
     try:
-        if pd.isna(value):
+        import pandas as pd  # aquí y no arriba: MoreInfoPilot.exe se crea sin pandas para que pese menos
+    except ImportError:
+        pd = None
+    try:
+        if pd is not None and pd.isna(value):
             return ""
     except (TypeError, ValueError):
         pass
     if isinstance(value, float):
         return f"{value:,.2f}"
-    if isinstance(value, pd.Timestamp):
+    if pd is not None and isinstance(value, pd.Timestamp):
         return value.strftime("%Y-%m-%d") if value == value.normalize() else value.strftime("%Y-%m-%d %H:%M")
     return str(value)
 
