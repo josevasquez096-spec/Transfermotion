@@ -1,0 +1,10 @@
+' MoreInfo Pilot - code of the blank UserForm "MIForm" (paste it in the form's code window).
+' The windows of the app (MIMain, MILetter) create their controls on this form by code.
+Option Explicit
+
+Public Owner As Object
+
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    If Owner Is Nothing Then Exit Sub
+    If CallByName(Owner, "OnClosing", VbMethod, CloseMode) Then Cancel = 1
+End Sub
